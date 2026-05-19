@@ -35,8 +35,12 @@ export const useUnreadStore = create((set, get) => ({
     set({ counts: newCounts, total: Object.values(newCounts).reduce((a, b) => a + b, 0) })
   },
 
-  markRead: async (convoId, userId) => {
-    const now = new Date().toISOString()
+  markRead: async (convoId, userId, serverTimestamp = null) => {
+    // Use server-side message timestamp when available to avoid client/server clock skew.
+    // Add 1ms so the timestamp is strictly after the last seen message.
+    const now = serverTimestamp
+      ? new Date(new Date(serverTimestamp).getTime() + 1).toISOString()
+      : new Date().toISOString()
     // Update local state immediately so realtime events arriving during the DB write
     // are properly filtered and not re-added as unread
     set(s => {

@@ -24,14 +24,20 @@ export default function Chat() {
   const [sending, setSending] = useState(false)
   const bottomRef = useRef()
   const inputRef = useRef()
+  const messagesRef = useRef([])
+
+  // Keep ref in sync so the cleanup always has the latest messages
+  useEffect(() => { messagesRef.current = messages }, [messages])
 
   useEffect(() => {
     setActiveConvo(id)
-    if (user) markRead(id, user.id)
     return () => {
-      // markRead before setActiveConvo(null) so lastReadTimestamps is set
-      // before the activeConvoId filter is cleared
-      if (user) markRead(id, user.id)
+      // Use the server timestamp of the last seen message to avoid clock skew
+      if (user) {
+        const msgs = messagesRef.current
+        const latest = msgs[msgs.length - 1]
+        markRead(id, user.id, latest?.created_at ?? null)
+      }
       setActiveConvo(null)
     }
   }, [id, user])
@@ -53,8 +59,8 @@ export default function Chat() {
               if (prev.find(m => m.id === data.id)) return prev
               return [...prev, data]
             })
-            // Mark as read immediately since user is viewing this chat
-            if (user && data.sender_id !== user.id) markRead(id, user.id)
+            // Mark as read using the server-side message timestamp
+            if (user && data.sender_id !== user.id) markRead(id, user.id, data.created_at)
           }
         }
       ).subscribe()
@@ -101,6 +107,9 @@ export default function Chat() {
         .order('created_at', { ascending: true })
         .limit(100)
       setMessages(msgs || [])
+      if (user && msgs?.length) {
+        markRead(id, user.id, msgs[msgs.length - 1].created_at)
+      }
     } catch (err) {
       console.error(err)
     } finally {
