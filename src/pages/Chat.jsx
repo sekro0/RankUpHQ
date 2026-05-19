@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Send, Trash2, Users } from 'lucide-react'
 import { motion } from 'framer-motion'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 import supabase from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 import { useUnreadStore } from '../store/unreadStore'
@@ -16,6 +17,7 @@ export default function Chat() {
   const { markRead, setActiveConvo } = useUnreadStore()
   const [messages, setMessages] = useState([])
   const [otherUser, setOtherUser] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [groupInfo, setGroupInfo] = useState(null) // { name, memberCount } for group chats
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(true)
@@ -27,9 +29,10 @@ export default function Chat() {
     setActiveConvo(id)
     if (user) markRead(id, user.id)
     return () => {
-      setActiveConvo(null)
-      // Mark read on exit too — covers any messages that arrived while viewing
+      // markRead before setActiveConvo(null) so lastReadTimestamps is set
+      // before the activeConvoId filter is cleared
       if (user) markRead(id, user.id)
+      setActiveConvo(null)
     }
   }, [id, user])
 
@@ -127,7 +130,6 @@ export default function Chat() {
   }
 
   const deleteConversation = async () => {
-    if (!confirm('Delete this conversation? This cannot be undone.')) return
     try {
       await supabase
         .from('conversation_participants')
@@ -184,7 +186,7 @@ export default function Chat() {
           </Link>
         )}
         <button
-          onClick={deleteConversation}
+          onClick={() => setConfirmDelete(true)}
           className="ml-auto p-2 text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
           title="Delete conversation"
         >
@@ -278,6 +280,15 @@ export default function Chat() {
           </button>
         </form>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={() => { setConfirmDelete(false); deleteConversation() }}
+        title="Delete conversation"
+        message="This will remove the conversation from your inbox. This cannot be undone."
+        confirmText="Delete"
+      />
     </div>
   )
 }

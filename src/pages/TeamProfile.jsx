@@ -10,6 +10,7 @@ import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import Avatar from '../components/ui/Avatar'
 import Modal from '../components/ui/Modal'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 
 const ROLE_ICONS = { owner: Crown, 'co-leader': Shield, captain: Shield, member: Star, substitute: Star }
 const ROLE_COLORS = { owner: 'warning', 'co-leader': 'accent', captain: 'cyan', member: 'default', substitute: 'default' }
@@ -49,6 +50,10 @@ export default function TeamProfile() {
   const [uploadingBanner, setUploadingBanner] = useState(false)
   const logoRef = useRef()
   const bannerRef = useRef()
+
+  const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', confirmText: 'Confirm', onConfirm: null })
+  const showConfirm = (config) => setConfirmState({ open: true, confirmText: 'Confirm', ...config })
+  const closeConfirm = () => setConfirmState(s => ({ ...s, open: false }))
 
   // Role & custom role editing
   const [roleDropdown, setRoleDropdown] = useState(null) // userId with open dropdown
@@ -180,8 +185,17 @@ export default function TeamProfile() {
     } catch { toast.error('Failed to update') }
   }
 
-  const removeMember = async (memberId) => {
-    if (!confirm('Remove this member?')) return
+  const removeMember = (memberId) => {
+    const member = members.find(m => m.user_id === memberId)
+    showConfirm({
+      title: 'Remove member',
+      message: `Remove ${member?.profile?.display_name || member?.profile?.username || 'this player'} from the team?`,
+      confirmText: 'Remove',
+      onConfirm: () => doRemoveMember(memberId),
+    })
+  }
+
+  const doRemoveMember = async (memberId) => {
     await supabase.from('team_members').delete().eq('team_id', id).eq('user_id', memberId)
     // Also remove from team chat
     const { data: teamConvo } = await supabase.from('conversations').select('id').eq('team_id', id).maybeSingle()
@@ -192,8 +206,16 @@ export default function TeamProfile() {
     toast.success('Member removed')
   }
 
-  const leaveTeam = async () => {
-    if (!confirm('Leave this team?')) return
+  const leaveTeam = () => {
+    showConfirm({
+      title: 'Leave team',
+      message: `Are you sure you want to leave ${team?.name}? You'll need to request to join again.`,
+      confirmText: 'Leave',
+      onConfirm: doLeaveTeam,
+    })
+  }
+
+  const doLeaveTeam = async () => {
     await supabase.from('team_members').delete().eq('team_id', id).eq('user_id', user.id)
     // Remove from team chat
     const { data: teamConvo } = await supabase.from('conversations').select('id').eq('team_id', id).maybeSingle()
@@ -651,6 +673,15 @@ export default function TeamProfile() {
           </div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={confirmState.open}
+        onClose={closeConfirm}
+        onConfirm={() => { closeConfirm(); confirmState.onConfirm?.() }}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+      />
 
       {/* Invite Modal */}
       <Modal open={inviteModal} onClose={() => { setInviteModal(false); setInviteSearch(''); setInviteResults([]) }} title="Invite Player">

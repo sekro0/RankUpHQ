@@ -9,6 +9,7 @@ import { useUnreadStore } from '../store/unreadStore'
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { timeAgo } from '../utils/formatters'
 
 export default function Messages() {
@@ -27,6 +28,7 @@ export default function Messages() {
   const [selectedMembers, setSelectedMembers] = useState([])
   const [creatingGroup, setCreatingGroup] = useState(false)
   const [searchingFriends, setSearchingFriends] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
   useEffect(() => {
     if (!user) return
@@ -138,8 +140,7 @@ export default function Messages() {
   }
 
   const deleteConversation = async (convoId, e) => {
-    e.stopPropagation()
-    if (!confirm('Delete this conversation?')) return
+    e?.stopPropagation()
     try {
       await supabase
         .from('conversation_participants')
@@ -292,7 +293,7 @@ export default function Messages() {
                 </div>
               </button>
               <button
-                onClick={(e) => deleteConversation(convo.id, e)}
+                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(convo.id) }}
                 className="shrink-0 p-2 text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                 title="Delete conversation"
               >
@@ -371,6 +372,15 @@ export default function Messages() {
           </Button>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={() => { const id = confirmDeleteId; setConfirmDeleteId(null); deleteConversation(id) }}
+        title="Delete conversation"
+        message="This will remove the conversation from your inbox. This cannot be undone."
+        confirmText="Delete"
+      />
     </div>
   )
 }

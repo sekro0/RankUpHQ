@@ -9,11 +9,14 @@ import { useGamesStore } from '../store/gamesStore'
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
 
-function PlayerCard({ profile, gameById, onLike, onDislike, isTop }) {
+function PlayerCard({ profile, gameById, onLike, onDislike, isTop, exitDirection }) {
   const x = useMotionValue(0)
-  const rotate = useTransform(x, [-200, 200], [-20, 20])
-  const likeOpacity = useTransform(x, [20, 100], [0, 1])
-  const dislikeOpacity = useTransform(x, [-100, -20], [1, 0])
+  const rotate = useTransform(x, [-200, 200], [-22, 22])
+  const likeOpacity = useTransform(x, [30, 110], [0, 1])
+  const dislikeOpacity = useTransform(x, [-110, -30], [1, 0])
+  const greenTint = useTransform(x, [0, 150], [0, 0.12])
+  const redTint = useTransform(x, [-150, 0], [0.12, 0])
+  const cardScale = useTransform(x, [-200, 0, 200], [0.97, 1, 0.97])
 
   const handleDragEnd = (_, info) => {
     if (info.offset.x > 100) onLike()
@@ -24,20 +27,33 @@ function PlayerCard({ profile, gameById, onLike, onDislike, isTop }) {
 
   return (
     <motion.div
-      style={isTop ? { x, rotate, touchAction: 'none' } : {}}
+      style={isTop ? { x, rotate, scale: cardScale, touchAction: 'none' } : {}}
       drag={isTop ? 'x' : false}
       dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={0.85}
       onDragEnd={isTop ? handleDragEnd : undefined}
+      exit={isTop
+        ? { x: exitDirection === 'right' ? 700 : -700, opacity: 0, rotate: exitDirection === 'right' ? 25 : -25, transition: { duration: 0.3, ease: 'easeOut' } }
+        : { opacity: 0, scale: 0.95, transition: { duration: 0.2 } }
+      }
       className={`absolute inset-0 bg-card border border-border rounded-2xl overflow-hidden cursor-grab active:cursor-grabbing select-none ${!isTop ? 'scale-95 -z-10 translate-y-4' : ''}`}
     >
+      {/* Drag tint overlays */}
+      {isTop && (
+        <>
+          <motion.div style={{ opacity: greenTint }} className="absolute inset-0 bg-green-500 z-10 pointer-events-none rounded-2xl" />
+          <motion.div style={{ opacity: redTint }} className="absolute inset-0 bg-red-500 z-10 pointer-events-none rounded-2xl" />
+        </>
+      )}
+
       {/* Like/Dislike overlay indicators */}
       {isTop && (
         <>
-          <motion.div style={{ opacity: likeOpacity }} className="absolute top-6 left-6 z-20 px-4 py-2 border-4 border-green-400 rounded-xl rotate-[-15deg]">
-            <span className="text-green-400 text-2xl font-black">LIKE</span>
+          <motion.div style={{ opacity: likeOpacity }} className="absolute top-6 left-6 z-20 px-4 py-2 border-4 border-green-400 rounded-xl rotate-[-15deg] shadow-lg">
+            <span className="text-green-400 text-2xl font-black tracking-wide">LIKE</span>
           </motion.div>
-          <motion.div style={{ opacity: dislikeOpacity }} className="absolute top-6 right-6 z-20 px-4 py-2 border-4 border-red-400 rounded-xl rotate-[15deg]">
-            <span className="text-red-400 text-2xl font-black">NOPE</span>
+          <motion.div style={{ opacity: dislikeOpacity }} className="absolute top-6 right-6 z-20 px-4 py-2 border-4 border-red-400 rounded-xl rotate-[15deg] shadow-lg">
+            <span className="text-red-400 text-2xl font-black tracking-wide">NOPE</span>
           </motion.div>
         </>
       )}
@@ -142,6 +158,7 @@ export default function Discover() {
   const [loading, setLoading] = useState(true)
   const [actioning, setActioning] = useState(false)
   const [matchedProfile, setMatchedProfile] = useState(null)
+  const [exitDirection, setExitDirection] = useState('right')
 
   useEffect(() => { loadProfiles() }, [])
 
@@ -185,6 +202,7 @@ export default function Discover() {
     if (actioning || profiles.length === 0) return
     const target = profiles[0]
     setActioning(true)
+    setExitDirection(liked ? 'right' : 'left')
 
     // Optimistically remove card
     setProfiles(prev => prev.slice(1))
@@ -282,6 +300,7 @@ export default function Discover() {
                   profile={p}
                   gameById={gameById}
                   isTop={i === 0}
+                  exitDirection={exitDirection}
                   onLike={() => act(true)}
                   onDislike={() => act(false)}
                 />
@@ -290,27 +309,35 @@ export default function Discover() {
           </div>
 
           {/* Action buttons */}
-          <div className="flex justify-center items-center gap-6">
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => act(false)}
-              disabled={actioning}
-              className="w-16 h-16 bg-surface border-2 border-red-500/40 hover:border-red-500 text-red-400 hover:text-red-300 rounded-full flex items-center justify-center transition-all disabled:opacity-40 shadow-lg"
-            >
-              <X size={28} />
-            </motion.button>
+          <div className="flex justify-center items-center gap-8">
+            <div className="flex flex-col items-center gap-1.5">
+              <motion.button
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.88 }}
+                onClick={() => act(false)}
+                disabled={actioning}
+                className="w-16 h-16 bg-surface border-2 border-red-500/40 hover:border-red-500 hover:bg-red-500/10 text-red-400 hover:text-red-300 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 shadow-lg"
+              >
+                <X size={26} strokeWidth={2.5} />
+              </motion.button>
+              <span className="text-[10px] text-muted uppercase tracking-widest">Nope</span>
+            </div>
 
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => act(true)}
-              disabled={actioning}
-              className="w-16 h-16 bg-surface border-2 border-green-500/40 hover:border-green-500 text-green-400 hover:text-green-300 rounded-full flex items-center justify-center transition-all disabled:opacity-40 shadow-lg"
-            >
-              <Heart size={28} />
-            </motion.button>
+            <div className="flex flex-col items-center gap-1.5">
+              <motion.button
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.88 }}
+                onClick={() => act(true)}
+                disabled={actioning}
+                className="w-16 h-16 bg-surface border-2 border-green-500/40 hover:border-green-500 hover:bg-green-500/10 text-green-400 hover:text-green-300 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 shadow-lg"
+              >
+                <Heart size={24} strokeWidth={2.5} />
+              </motion.button>
+              <span className="text-[10px] text-muted uppercase tracking-widest">Like</span>
+            </div>
           </div>
 
-          <p className="text-center text-xs text-muted mt-4">Swipe or use buttons • {profiles.length} players left</p>
+          <p className="text-center text-xs text-muted mt-4">Swipe or tap • {profiles.length} players left</p>
         </>
       )}
 

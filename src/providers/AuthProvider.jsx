@@ -7,7 +7,7 @@ import { useUnreadStore } from '../store/unreadStore'
 export default function AuthProvider({ children }) {
   const { setSession, setUser, setProfile, setLoading, clear } = useAuthStore()
   const loadGames = useGamesStore(s => s.loadGames)
-  const { loadCounts, subscribe, unsubscribe, reset, loadFriendRequests, subscribeFriendRequests } = useUnreadStore()
+  const { loadCounts, subscribe, unsubscribe, reset, loadFriendRequests, subscribeFriendRequests, loadTeamJoinRequests, subscribeTeamRequests } = useUnreadStore()
 
   const fetchProfile = async (userId) => {
     try {
@@ -28,6 +28,8 @@ export default function AuthProvider({ children }) {
         subscribe(session.user.id)
         loadFriendRequests(session.user.id)
         subscribeFriendRequests(session.user.id)
+        loadTeamJoinRequests(session.user.id)
+        subscribeTeamRequests(session.user.id)
       }
       setLoading(false)
     })
@@ -41,6 +43,8 @@ export default function AuthProvider({ children }) {
         subscribe(session.user.id)
         loadFriendRequests(session.user.id)
         subscribeFriendRequests(session.user.id)
+        loadTeamJoinRequests(session.user.id)
+        subscribeTeamRequests(session.user.id)
       }
       if (event === 'SIGNED_OUT') {
         clear()

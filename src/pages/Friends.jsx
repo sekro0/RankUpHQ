@@ -8,6 +8,7 @@ import { useAuthStore } from '../store/authStore'
 import { useUnreadStore } from '../store/unreadStore'
 import Avatar from '../components/ui/Avatar'
 import Button from '../components/ui/Button'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 
 const TABS = ['Friends', 'Requests', 'Find Players']
 
@@ -24,6 +25,9 @@ export default function Friends() {
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
   const [actioning, setActioning] = useState(null)
+  const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', confirmText: 'Confirm', onConfirm: null })
+  const showConfirm = (config) => setConfirmState({ open: true, confirmText: 'Confirm', ...config })
+  const closeConfirm = () => setConfirmState(s => ({ ...s, open: false }))
 
   useEffect(() => {
     if (!user) return
@@ -159,7 +163,15 @@ export default function Friends() {
   }
 
   const removeFriend = async (friendship) => {
-    if (!confirm(`Remove ${friendship.other.username} from friends?`)) return
+    showConfirm({
+      title: 'Remove friend',
+      message: `Remove ${friendship.other.display_name || friendship.other.username} from your friends?`,
+      confirmText: 'Remove',
+      onConfirm: () => doRemoveFriend(friendship),
+    })
+  }
+
+  const doRemoveFriend = async (friendship) => {
     setActioning(friendship.id)
     try {
       await supabase.from('friendships').delete().eq('id', friendship.id)
@@ -173,7 +185,15 @@ export default function Friends() {
   }
 
   const blockUser = async (targetId, existingId) => {
-    if (!confirm('Block this user? They won\'t be able to send you friend requests.')) return
+    showConfirm({
+      title: 'Block user',
+      message: "They won't be able to send you friend requests or appear in your search results.",
+      confirmText: 'Block',
+      onConfirm: () => doBlockUser(targetId, existingId),
+    })
+  }
+
+  const doBlockUser = async (targetId, existingId) => {
     setActioning(targetId)
     try {
       if (existingId) {
@@ -408,6 +428,15 @@ export default function Friends() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmState.open}
+        onClose={closeConfirm}
+        onConfirm={() => { closeConfirm(); confirmState.onConfirm?.() }}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+      />
     </div>
   )
 }

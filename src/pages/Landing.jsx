@@ -53,22 +53,6 @@ export default function Landing() {
             </Link>
           </motion.div>
 
-          {/* Stats row */}
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.35 }}
-            className="mt-14 flex items-center gap-8 flex-wrap"
-          >
-            {[
-              { value: '10K+', label: 'Active Players' },
-              { value: '500+', label: 'Daily Matches' },
-              { value: '50+', label: 'Tournaments Run' },
-            ].map(({ value, label }) => (
-              <div key={label}>
-                <div className="text-2xl font-black text-white">{value}</div>
-                <div className="text-xs text-muted uppercase tracking-wide mt-0.5">{label}</div>
-              </div>
-            ))}
-          </motion.div>
         </div>
       </section>
 

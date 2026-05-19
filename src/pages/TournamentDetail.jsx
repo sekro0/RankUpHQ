@@ -10,6 +10,7 @@ import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import Avatar from '../components/ui/Avatar'
 import Modal from '../components/ui/Modal'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { formatDate } from '../utils/formatters'
 
 const STATUS_CONFIG = {
@@ -79,6 +80,9 @@ export default function TournamentDetail() {
   const [matches, setMatches] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', confirmText: 'Confirm', variant: 'danger', onConfirm: null })
+  const showConfirm = (config) => setConfirmState({ open: true, confirmText: 'Confirm', variant: 'danger', ...config })
+  const closeConfirm = () => setConfirmState(s => ({ ...s, open: false }))
   const [registering, setRegistering] = useState(false)
   const [unregistering, setUnregistering] = useState(false)
   const [cancelling, setCancelling] = useState(false)
@@ -160,7 +164,15 @@ export default function TournamentDetail() {
   }
 
   const cancelTournament = async () => {
-    if (!confirm('Cancel this tournament? This cannot be undone.')) return
+    showConfirm({
+      title: 'Cancel tournament',
+      message: 'This will permanently cancel the tournament and notify all participants. This cannot be undone.',
+      confirmText: 'Cancel tournament',
+      onConfirm: doCancelTournament,
+    })
+  }
+
+  const doCancelTournament = async () => {
     setCancelling(true)
     try {
       await supabase.from('tournaments').update({ status: 'cancelled' }).eq('id', id)
@@ -171,7 +183,16 @@ export default function TournamentDetail() {
   }
 
   const startTournament = async () => {
-    if (!confirm('Start the tournament and generate bracket?')) return
+    showConfirm({
+      title: 'Start tournament',
+      message: 'This will lock registrations and generate the bracket. You cannot add more participants after this.',
+      confirmText: 'Start',
+      variant: 'warning',
+      onConfirm: doStartTournament,
+    })
+  }
+
+  const doStartTournament = async () => {
     setStarting(true)
     try {
       const shuffled = [...participants].sort(() => Math.random() - 0.5)
@@ -447,6 +468,16 @@ export default function TournamentDetail() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={confirmState.open}
+        onClose={closeConfirm}
+        onConfirm={() => { closeConfirm(); confirmState.onConfirm?.() }}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        variant={confirmState.variant}
+      />
     </motion.div>
   )
 }

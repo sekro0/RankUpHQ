@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import supabase from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 import Button from '../components/ui/Button'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 import Avatar from '../components/ui/Avatar'
 import { useGamesStore } from '../store/gamesStore'
 
@@ -16,6 +17,8 @@ export default function EditProfile() {
   const [saving, setSaving] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [uploadingBanner, setUploadingBanner] = useState(false)
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
   const avatarRef = useRef()
   const bannerRef = useRef()
 
@@ -126,7 +129,7 @@ export default function EditProfile() {
   const selectedGame = gameById[newGame.game_id]
 
   const deleteAccount = async () => {
-    if (!confirm('Are you sure you want to delete your account? This cannot be undone.')) return
+    setDeletingAccount(true)
     try {
       await supabase.rpc('delete_own_account')
       await supabase.auth.signOut()
@@ -134,6 +137,9 @@ export default function EditProfile() {
       toast.success('Account deleted')
     } catch (err) {
       toast.error('Failed to delete account. Contact support.')
+    } finally {
+      setDeletingAccount(false)
+      setConfirmDeleteAccount(false)
     }
   }
 
@@ -303,12 +309,22 @@ export default function EditProfile() {
         <div className="border border-red-500/20 rounded-xl p-4 bg-red-500/5">
           <h3 className="text-sm font-semibold text-red-400 mb-1">Danger Zone</h3>
           <p className="text-xs text-muted mb-3">Permanently delete your account and all your data. This cannot be undone.</p>
-          <button type="button" onClick={deleteAccount}
+          <button type="button" onClick={() => setConfirmDeleteAccount(true)}
             className="px-4 py-2 text-sm font-medium text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/10 transition-colors">
             Delete Account
           </button>
         </div>
       </form>
+
+      <ConfirmDialog
+        open={confirmDeleteAccount}
+        onClose={() => setConfirmDeleteAccount(false)}
+        onConfirm={deleteAccount}
+        title="Delete your account"
+        message="All your data, matches, messages, and team memberships will be permanently deleted. This cannot be undone."
+        confirmText="Delete my account"
+        loading={deletingAccount}
+      />
     </motion.div>
   )
 }

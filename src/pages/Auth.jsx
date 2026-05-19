@@ -10,8 +10,9 @@ export default function Auth({ mode = 'login' }) {
   const [tab, setTab] = useState(mode)
   const [loading, setLoading] = useState(false)
   const [showPass, setShowPass] = useState(false)
+  const [showConfirmPass, setShowConfirmPass] = useState(false)
   const [error, setError] = useState('')
-  const [form, setForm] = useState({ email: '', password: '', username: '' })
+  const [form, setForm] = useState({ email: '', password: '', username: '', confirmPassword: '' })
 
   const update = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
 
@@ -37,6 +38,7 @@ export default function Auth({ mode = 'login' }) {
     if (form.username.length < 3) return setError('Username must be at least 3 characters')
     if (!/^[a-zA-Z0-9_]+$/.test(form.username)) return setError('Username can only contain letters, numbers, and underscores')
     if (form.password.length < 6) return setError('Password must be at least 6 characters')
+    if (form.password !== form.confirmPassword) return setError('Passwords do not match')
     setLoading(true)
     try {
       const { data: existing } = await supabase
@@ -47,7 +49,7 @@ export default function Auth({ mode = 'login' }) {
       const { data, error } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
-        options: { data: { username } }
+        options: { data: { username }, emailRedirectTo: window.location.origin }
       })
       if (error) {
         if (error.message.includes('already registered')) throw new Error('Email already registered')
@@ -95,14 +97,6 @@ export default function Auth({ mode = 'login' }) {
           <p className="text-muted text-lg max-w-xs">
             Join thousands of players finding teammates, building teams, and competing in tournaments.
           </p>
-          <div className="mt-12 grid grid-cols-3 gap-6 w-full max-w-sm">
-            {[['10K+', 'Players'], ['500+', 'Matches/day'], ['50+', 'Tournaments']].map(([n, l]) => (
-              <div key={l} className="text-center">
-                <div className="text-2xl font-black text-white">{n}</div>
-                <div className="text-xs text-muted">{l}</div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -225,6 +219,26 @@ export default function Auth({ mode = 'login' }) {
                         />
                         <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-white">
                           {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-300 block mb-1.5">Confirm Password</label>
+                      <div className="relative">
+                        <input
+                          type={showConfirmPass ? 'text' : 'password'} required
+                          value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)}
+                          placeholder="Repeat your password"
+                          className={`w-full px-3 py-2.5 pr-10 bg-surface border rounded-lg text-slate-200 placeholder-muted text-sm focus:outline-none focus:ring-1 transition-colors ${
+                            form.confirmPassword && form.confirmPassword !== form.password
+                              ? 'border-red-500/60 focus:border-red-500 focus:ring-red-500/30'
+                              : form.confirmPassword && form.confirmPassword === form.password
+                              ? 'border-green-500/60 focus:border-green-500 focus:ring-green-500/30'
+                              : 'border-border focus:border-accent focus:ring-accent'
+                          }`}
+                        />
+                        <button type="button" onClick={() => setShowConfirmPass(!showConfirmPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-white">
+                          {showConfirmPass ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
                       </div>
                     </div>

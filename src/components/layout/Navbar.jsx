@@ -10,7 +10,7 @@ import Avatar from '../ui/Avatar'
 
 export default function Navbar() {
   const { user, profile, clear } = useAuthStore()
-  const { total, friendRequests } = useUnreadStore()
+  const { total, friendRequests, teamJoinRequests } = useUnreadStore()
   const navigate = useNavigate()
   const location = useLocation()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -22,7 +22,7 @@ export default function Navbar() {
     { to: '/games', icon: Gamepad2, label: 'Games' },
     { to: '/discover', icon: Heart, label: 'Discover' },
     { to: '/friends', icon: UserPlus, label: 'Friends', badge: friendRequests },
-    { to: '/teams', icon: Users, label: 'Teams' },
+    { to: '/teams', icon: Users, label: 'Teams', badge: teamJoinRequests },
     { to: '/tournaments', icon: Trophy, label: 'Tournaments' },
     { to: '/messages', icon: MessageSquare, label: 'Messages', badge: total },
   ]
