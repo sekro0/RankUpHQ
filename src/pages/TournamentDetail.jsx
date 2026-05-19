@@ -137,6 +137,16 @@ export default function TournamentDetail() {
       const payload = { tournament_id: id }
       if (tournament.participant_type === 'team') {
         if (!selectedTeam) { toast.error('Select a team'); return }
+        if (tournament.min_team_size > 1) {
+          const { count } = await supabase.from('team_members')
+            .select('user_id', { count: 'exact', head: true })
+            .eq('team_id', selectedTeam)
+          if ((count || 0) < tournament.min_team_size) {
+            toast.error(`Your team needs at least ${tournament.min_team_size} members to join`)
+            setRegistering(false)
+            return
+          }
+        }
         payload.team_id = selectedTeam
         payload.user_id = user.id
       } else {
@@ -281,20 +291,25 @@ export default function TournamentDetail() {
             )}
             {!isRegistered && tournament.status === 'open' && !isFull && !isOrganizer && (
               tournament.participant_type === 'team' ? (
-                myTeams.length > 0 ? (
-                  <div className="flex gap-2">
-                    <select value={selectedTeam} onChange={e => setSelectedTeam(e.target.value)}
-                      className="px-2 py-1.5 bg-surface border border-border rounded-lg text-xs text-slate-200 focus:outline-none focus:border-accent">
-                      <option value="">Select team</option>
-                      {myTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                    <Button size="sm" loading={registering} onClick={register}>Register</Button>
-                  </div>
-                ) : (
-                  <Link to="/teams/create" className="text-xs text-accent hover:underline flex items-center gap-1">
-                    <Users size={12} /> Create a team to join
-                  </Link>
-                )
+                <>
+                  {myTeams.length > 0 ? (
+                    <div className="flex gap-2">
+                      <select value={selectedTeam} onChange={e => setSelectedTeam(e.target.value)}
+                        className="px-2 py-1.5 bg-surface border border-border rounded-lg text-xs text-slate-200 focus:outline-none focus:border-accent">
+                        <option value="">Select team</option>
+                        {myTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                      <Button size="sm" loading={registering} onClick={register}>Register</Button>
+                    </div>
+                  ) : (
+                    <Link to="/teams/create" className="text-xs text-accent hover:underline flex items-center gap-1">
+                      <Users size={12} /> Create a team to join
+                    </Link>
+                  )}
+                  {tournament.min_team_size > 1 && (
+                    <span className="text-xs text-muted">Min. {tournament.min_team_size} members required</span>
+                  )}
+                </>
               ) : (
                 <Button size="sm" loading={registering} onClick={register}>Register</Button>
               )
@@ -348,6 +363,9 @@ export default function TournamentDetail() {
               { label: 'Type', value: tournament.participant_type === 'team' ? 'Team' : 'Solo' },
               { label: 'Registered', value: `${participants.length}/${tournament.max_participants}` },
               { label: 'Status', value: statusCfg.label },
+              ...(tournament.participant_type === 'team' && tournament.min_team_size > 1
+                ? [{ label: 'Min. team size', value: `${tournament.min_team_size} members` }]
+                : []),
             ].map(({ label, value }) => (
               <div key={label} className="bg-card border border-border rounded-xl p-3 text-center">
                 <p className="text-xs text-muted mb-1">{label}</p>

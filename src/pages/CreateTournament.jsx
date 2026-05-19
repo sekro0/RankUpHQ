@@ -15,7 +15,7 @@ export default function CreateTournament() {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     name: '', game_id: '', format: 'single_elimination', participant_type: 'team',
-    max_participants: 8, prize_info: '', rules: '', starts_at: '', description: ''
+    max_participants: 8, min_team_size: 1, prize_info: '', rules: '', starts_at: '', description: ''
   })
 
   const update = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
@@ -31,6 +31,7 @@ export default function CreateTournament() {
         game_id: form.game_id || null,
         starts_at: form.starts_at || null,
         max_participants: parseInt(form.max_participants),
+        min_team_size: form.participant_type === 'team' ? parseInt(form.min_team_size) || 1 : null,
       }
       const { data, error } = await supabase.from('tournaments').insert(payload).select().single()
       if (error) throw error
@@ -74,6 +75,19 @@ export default function CreateTournament() {
             </select>
           </div>
         </div>
+
+        {form.participant_type === 'team' && (
+          <div>
+            <label className={labelClass}>Min. team members required <span className="text-muted">(to register)</span></label>
+            <input
+              type="number" min={1} max={20}
+              className={inputClass}
+              value={form.min_team_size}
+              onChange={e => update('min_team_size', e.target.value)}
+              placeholder="1"
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <div>
