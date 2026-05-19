@@ -14,6 +14,10 @@ export const useUnreadStore = create((set, get) => ({
   teamJoinRequestsChannel: null,
 
   loadCounts: async (userId) => {
+    // Read localStorage cache — survives F5 race conditions
+    let localCache = {}
+    try { localCache = JSON.parse(localStorage.getItem(`ruhq_lr_${userId}`) || '{}') } catch {}
+
     const { data: parts } = await supabase
       .from('conversation_participants')
       .select('conversation_id, last_read_at')
@@ -22,12 +26,19 @@ export const useUnreadStore = create((set, get) => ({
 
     const newCounts = {}
     await Promise.all(parts.map(async (p) => {
+      // Use whichever is more recent: DB value or localStorage value
+      const dbTs = p.last_read_at
+      const localTs = localCache[p.conversation_id]
+      const effectiveTs = dbTs && localTs
+        ? (localTs > dbTs ? localTs : dbTs)
+        : (dbTs || localTs || null)
+
       let q = supabase
         .from('messages')
         .select('id', { count: 'exact', head: true })
         .eq('conversation_id', p.conversation_id)
         .neq('sender_id', userId)
-      if (p.last_read_at) q = q.gt('created_at', p.last_read_at)
+      if (effectiveTs) q = q.gt('created_at', effectiveTs)
       const { count } = await q
       if (count > 0) newCounts[p.conversation_id] = count
     }))
@@ -36,13 +47,23 @@ export const useUnreadStore = create((set, get) => ({
   },
 
   markRead: async (convoId, userId, serverTimestamp = null) => {
-    // Use server-side message timestamp when available to avoid client/server clock skew.
-    // Add 1ms so the timestamp is strictly after the last seen message.
-    const now = serverTimestamp
-      ? new Date(new Date(serverTimestamp).getTime() + 1).toISOString()
-      : new Date().toISOString()
-    // Update local state immediately so realtime events arriving during the DB write
-    // are properly filtered and not re-added as unread
+    // Require a server-side timestamp to avoid client/server clock skew
+    if (!serverTimestamp) return
+    // Add 1ms so the filter is strictly after the last seen message
+    const now = new Date(new Date(serverTimestamp).getTime() + 1).toISOString()
+
+    // Persist to localStorage SYNCHRONOUSLY before the async DB write.
+    // This survives F5 / page refresh races where the fetch gets cancelled.
+    try {
+      const key = `ruhq_lr_${userId}`
+      const cache = JSON.parse(localStorage.getItem(key) || '{}')
+      if (!cache[convoId] || now > cache[convoId]) {
+        cache[convoId] = now
+        localStorage.setItem(key, JSON.stringify(cache))
+      }
+    } catch {}
+
+    // Update Zustand state immediately
     set(s => {
       const counts = { ...s.counts }
       const removed = counts[convoId] || 0
@@ -53,6 +74,8 @@ export const useUnreadStore = create((set, get) => ({
         lastReadTimestamps: { ...s.lastReadTimestamps, [convoId]: now },
       }
     })
+
+    // Persist to DB (async — may lose race with F5, but localStorage already saved us)
     await supabase
       .from('conversation_participants')
       .update({ last_read_at: now })
@@ -183,7 +206,15 @@ export const useUnreadStore = create((set, get) => ({
           const { data: sender } = await supabase
             .from('profiles').select('username, display_name').eq('id', msg.sender_id).single()
           const name = sender?.display_name || sender?.username || 'Someone'
-          const preview = msg.content.length > 50 ? msg.content.slice(0, 50) + '…' : msg.content
+          let preview = '📎'
+          if (!msg.type || msg.type === 'text') {
+            const c = msg.content || ''
+            preview = c.length > 40 ? c.slice(0, 40) + '…' : c
+          } else if (msg.type === 'poll') {
+            preview = '📊 Created a poll'
+          } else if (msg.type === 'image') {
+            preview = '🖼 Sent an image'
+          }
 
           toast(`💬 ${name}: ${preview}`, {
             duration: 4000,

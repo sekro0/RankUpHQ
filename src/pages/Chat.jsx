@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Send, Trash2, Users, ImageIcon, BarChart2, X, Plus, Minus } from 'lucide-react'
+import { ArrowLeft, Send, Trash2, Users, ImageIcon, BarChart2, X, Plus, Minus, Search, AtSign, Maximize2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import supabase from '../lib/supabase'
@@ -12,17 +12,34 @@ import toast from 'react-hot-toast'
 
 const URL_REGEX = /(https?:\/\/[^\s]+)/g
 
-function MessageContent({ msg, currentUserId, groupMembers, onVote }) {
+// Lazy-loading image with skeleton + zoom overlay
+function ChatImage({ src, onLightbox }) {
+  const [loaded, setLoaded] = useState(false)
+  return (
+    <div
+      className="relative cursor-pointer group max-w-xs"
+      onClick={() => onLightbox(src)}
+    >
+      {!loaded && <div className="w-52 h-40 bg-surface animate-pulse rounded-2xl" />}
+      <img
+        src={src}
+        alt="shared"
+        loading="lazy"
+        onLoad={() => setLoaded(true)}
+        className={`max-w-xs max-h-60 rounded-2xl object-cover transition-all duration-300 group-hover:brightness-90 ${loaded ? 'opacity-100' : 'opacity-0 absolute inset-0 w-0 h-0'}`}
+      />
+      {loaded && (
+        <div className="absolute inset-0 rounded-2xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
+          <Maximize2 size={18} className="text-white drop-shadow" />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MessageContent({ msg, currentUserId, groupMembers, onVote, onLightbox }) {
   if (msg.type === 'image') {
-    return (
-      <a href={msg.content} target="_blank" rel="noopener noreferrer">
-        <img
-          src={msg.content}
-          alt="shared"
-          className="max-w-xs max-h-60 rounded-2xl object-cover cursor-pointer hover:opacity-90 transition-opacity"
-        />
-      </a>
-    )
+    return <ChatImage src={msg.content} onLightbox={onLightbox} />
   }
 
   if (msg.type === 'poll') {
@@ -79,7 +96,8 @@ function MessageContent({ msg, currentUserId, groupMembers, onVote }) {
   }
 
   // text: render links + @mentions
-  const parts = msg.content.split(URL_REGEX)
+  const content = msg.content || ''
+  const parts = content.split(URL_REGEX)
   return (
     <span className="break-words whitespace-pre-wrap">
       {parts.map((part, i) => {
@@ -94,7 +112,7 @@ function MessageContent({ msg, currentUserId, groupMembers, onVote }) {
         }
         return part.split(/(@\w+)/g).map((mp, j) => {
           if (mp.startsWith('@') && groupMembers.some(m => m.username === mp.slice(1))) {
-            return <span key={`${i}-${j}`} className="font-bold opacity-90">{mp}</span>
+            return <span key={`${i}-${j}`} className="font-bold opacity-95">{mp}</span>
           }
           return <span key={`${i}-${j}`}>{mp}</span>
         })
@@ -106,7 +124,7 @@ function MessageContent({ msg, currentUserId, groupMembers, onVote }) {
 export default function Chat() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuthStore()
+  const { user, profile } = useAuthStore()
   const { markRead, setActiveConvo } = useUnreadStore()
   const [messages, setMessages] = useState([])
   const [otherUser, setOtherUser] = useState(null)
@@ -120,12 +138,25 @@ export default function Chat() {
   const [showPollModal, setShowPollModal] = useState(false)
   const [pollDraft, setPollDraft] = useState({ question: '', options: ['', ''] })
   const [mentionQuery, setMentionQuery] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null) // { file, url }
+  const [lightboxSrc, setLightboxSrc] = useState(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [mentionNavIdx, setMentionNavIdx] = useState(0)
   const bottomRef = useRef()
   const inputRef = useRef()
   const imageInputRef = useRef()
   const messagesRef = useRef([])
+  const messageElRefs = useRef({})
 
   useEffect(() => { messagesRef.current = messages }, [messages])
+
+  const myUsername = profile?.username
+
+  // Messages where the current user is mentioned (by others)
+  const myMentionIds = messages
+    .filter(m => myUsername && (m.content || '').includes(`@${myUsername}`) && m.sender_id !== user?.id)
+    .map(m => m.id)
 
   useEffect(() => {
     setActiveConvo(id)
@@ -165,8 +196,15 @@ export default function Chat() {
   }, [id])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    if (!searchOpen) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, searchOpen])
+
+  // Close search when Escape pressed globally
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { setSearchOpen(false); setSearchQuery('') } }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
   const loadConversation = async () => {
     setLoading(true)
@@ -259,6 +297,7 @@ export default function Chat() {
         .slice(0, 5)
     : []
 
+  // Fix: don't include `type` for regular text messages (avoids breaking if migration not run)
   const sendMessage = async (e) => {
     e?.preventDefault()
     if (!text.trim() || sending) return
@@ -271,7 +310,6 @@ export default function Chat() {
         conversation_id: id,
         sender_id: user.id,
         content,
-        type: 'text',
       })
     } catch {
       toast.error('Failed to send message')
@@ -282,15 +320,21 @@ export default function Chat() {
     }
   }
 
-  const handleImageSelect = async (e) => {
+  const handleImageSelect = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5MB'); return }
+    setImagePreview({ file, url: URL.createObjectURL(file) })
+    e.target.value = ''
+  }
+
+  const sendImage = async () => {
+    if (!imagePreview || uploading) return
     setUploading(true)
     try {
-      const ext = file.name.split('.').pop()
+      const ext = imagePreview.file.name.split('.').pop()
       const path = `${id}/${Date.now()}.${ext}`
-      const { error: uploadErr } = await supabase.storage.from('chat-images').upload(path, file)
+      const { error: uploadErr } = await supabase.storage.from('chat-images').upload(path, imagePreview.file)
       if (uploadErr) throw uploadErr
       const { data: { publicUrl } } = supabase.storage.from('chat-images').getPublicUrl(path)
       await supabase.from('messages').insert({
@@ -299,13 +343,19 @@ export default function Chat() {
         content: publicUrl,
         type: 'image',
       })
+      URL.revokeObjectURL(imagePreview.url)
+      setImagePreview(null)
     } catch (err) {
       toast.error('Failed to upload image')
       console.error(err)
     } finally {
       setUploading(false)
-      e.target.value = ''
     }
+  }
+
+  const cancelImagePreview = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview.url)
+    setImagePreview(null)
   }
 
   const sendPoll = async () => {
@@ -349,6 +399,13 @@ export default function Chat() {
     }
   }
 
+  const jumpToMention = () => {
+    if (!myMentionIds.length) return
+    const targetId = myMentionIds[mentionNavIdx % myMentionIds.length]
+    messageElRefs.current[targetId]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setMentionNavIdx(i => (i + 1) % myMentionIds.length)
+  }
+
   const handleKeyDown = (e) => {
     if (e.key === 'Escape') { setMentionQuery(null); return }
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -362,65 +419,175 @@ export default function Chat() {
     }
   }
 
-  const groupedMessages = messages.reduce((groups, msg) => {
+  const displayMessages = searchQuery.trim()
+    ? messages.filter(m => m.type !== 'image' && (m.content || '').toLowerCase().includes(searchQuery.toLowerCase()))
+    : messages
+
+  const groupedMessages = displayMessages.reduce((groups, msg) => {
     const date = new Date(msg.created_at).toLocaleDateString()
     if (!groups[date]) groups[date] = []
     groups[date].push(msg)
     return groups
   }, {})
 
+  const highlightSearch = (content) => {
+    if (!searchQuery.trim()) return content
+    const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const parts = content.split(new RegExp(`(${escaped})`, 'gi'))
+    return parts.map((part, i) =>
+      part.toLowerCase() === searchQuery.toLowerCase()
+        ? <mark key={i} className="bg-accent/40 text-white rounded-sm px-0.5">{part}</mark>
+        : part
+    )
+  }
+
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-[calc(100vh-4rem)] relative">
+
+      {/* Lightbox */}
+      <AnimatePresence>
+        {lightboxSrc && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center"
+            onClick={() => setLightboxSrc(null)}
+          >
+            <button
+              className="absolute top-4 right-4 p-2 text-white/60 hover:text-white hover:bg-white/10 rounded-full transition-colors z-10"
+              onClick={() => setLightboxSrc(null)}
+            >
+              <X size={22} />
+            </button>
+            <motion.img
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.85, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 280, damping: 26 }}
+              src={lightboxSrc}
+              alt="Image"
+              className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-card/50 backdrop-blur-sm">
-        <button onClick={() => navigate('/messages')} className="p-2 text-muted hover:text-white hover:bg-surface rounded-lg transition-colors">
+        <button onClick={() => navigate('/messages')} className="p-2 text-muted hover:text-white hover:bg-surface rounded-lg transition-colors shrink-0">
           <ArrowLeft size={18} />
         </button>
-        {groupInfo && (
-          <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0">
-              <Users size={14} className="text-accent" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-white truncate">{groupInfo.name}</p>
-              <p className="text-xs text-muted">{groupInfo.memberCount} members</p>
-            </div>
+
+        {searchOpen ? (
+          <div className="flex-1 flex items-center gap-2">
+            <input
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search messages..."
+              autoFocus
+              className="flex-1 px-3 py-1.5 bg-surface border border-border rounded-lg text-sm text-slate-200 placeholder-muted focus:outline-none focus:border-accent"
+            />
+            {searchQuery && (
+              <span className="text-xs text-muted whitespace-nowrap shrink-0">
+                {displayMessages.length} result{displayMessages.length !== 1 ? 's' : ''}
+              </span>
+            )}
+            <button onClick={() => { setSearchOpen(false); setSearchQuery('') }} className="p-1.5 text-muted hover:text-white shrink-0">
+              <X size={16} />
+            </button>
           </div>
-        )}
-        {otherUser && (
-          <Link to={`/profile/${otherUser.username}`} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity flex-1 min-w-0">
-            <Avatar src={otherUser.avatar_url} name={otherUser.username} size="sm" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-white truncate">{otherUser.display_name || otherUser.username}</p>
-              <p className="text-xs text-muted">@{otherUser.username}</p>
+        ) : (
+          <>
+            {groupInfo && (
+              <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0">
+                  <Users size={14} className="text-accent" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{groupInfo.name}</p>
+                  <p className="text-xs text-muted">{groupInfo.memberCount} members</p>
+                </div>
+              </div>
+            )}
+            {otherUser && (
+              <Link to={`/profile/${otherUser.username}`} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity flex-1 min-w-0">
+                <Avatar src={otherUser.avatar_url} name={otherUser.username} size="sm" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{otherUser.display_name || otherUser.username}</p>
+                  <p className="text-xs text-muted">@{otherUser.username}</p>
+                </div>
+              </Link>
+            )}
+            <div className="ml-auto flex items-center gap-1 shrink-0">
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="p-2 text-muted hover:text-white hover:bg-surface rounded-lg transition-colors"
+                title="Search messages"
+              >
+                <Search size={16} />
+              </button>
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="p-2 text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+              >
+                <Trash2 size={16} />
+              </button>
             </div>
-          </Link>
+          </>
         )}
-        <button
-          onClick={() => setConfirmDelete(true)}
-          className="ml-auto p-2 text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
-        >
-          <Trash2 size={16} />
-        </button>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 relative">
+
+        {/* Mention jump banner */}
+        <AnimatePresence>
+          {myMentionIds.length > 0 && !searchOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="sticky top-0 z-10 flex justify-center"
+            >
+              <button
+                onClick={jumpToMention}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/90 hover:bg-accent text-white text-xs font-medium rounded-full shadow-lg transition-colors"
+              >
+                <AtSign size={11} />
+                {myMentionIds.length} mention{myMentionIds.length !== 1 ? 's' : ''} — tap to jump ↓
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {loading ? (
           <div className="flex items-center justify-center h-full">
             <div className="w-6 h-6 border-2 border-border border-t-accent rounded-full animate-spin" />
           </div>
-        ) : messages.length === 0 ? (
+        ) : displayMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            {groupInfo ? (
-              <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mb-4">
-                <Users size={28} className="text-accent" />
-              </div>
+            {searchQuery.trim() ? (
+              <>
+                <Search size={28} className="text-muted mb-2 opacity-40" />
+                <p className="text-sm text-muted">No results for "{searchQuery}"</p>
+              </>
+            ) : groupInfo ? (
+              <>
+                <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mb-4">
+                  <Users size={28} className="text-accent" />
+                </div>
+                <p className="text-white font-semibold">{groupInfo.name}</p>
+                <p className="text-sm text-muted mt-1">Say hi to start the conversation!</p>
+              </>
             ) : (
-              <Avatar src={otherUser?.avatar_url} name={otherUser?.username} size="lg" className="mb-4" />
+              <>
+                <Avatar src={otherUser?.avatar_url} name={otherUser?.username} size="lg" className="mb-4" />
+                <p className="text-white font-semibold">{otherUser?.display_name || otherUser?.username}</p>
+                <p className="text-sm text-muted mt-1">Say hi to start the conversation!</p>
+              </>
             )}
-            <p className="text-white font-semibold">{groupInfo?.name || otherUser?.display_name || otherUser?.username}</p>
-            <p className="text-sm text-muted mt-1">Say hi to start the conversation!</p>
           </div>
         ) : (
           Object.entries(groupedMessages).map(([date, dayMessages]) => (
@@ -437,10 +604,12 @@ export default function Chat() {
                   const showAvatar = !isOwn && (!prevMsg || prevMsg.sender_id !== msg.sender_id)
                   const isPoll = msg.type === 'poll'
                   const isImage = msg.type === 'image'
+                  const isMentioned = myMentionIds.includes(msg.id)
 
                   return (
                     <motion.div
                       key={msg.id}
+                      ref={el => { if (el) messageElRefs.current[msg.id] = el }}
                       initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
                       className={`flex items-end gap-2 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}
                     >
@@ -457,14 +626,27 @@ export default function Chat() {
                           isImage ? '' :
                           isPoll
                             ? `px-3 py-2 rounded-2xl ${isOwn ? 'bg-accent/15 border border-accent/25' : 'bg-surface border border-border'}`
-                            : `px-3 py-2 rounded-2xl text-sm leading-relaxed ${isOwn ? 'bg-accent text-white rounded-br-sm' : 'bg-surface border border-border text-slate-200 rounded-bl-sm'}`
+                            : `px-3 py-2 rounded-2xl text-sm leading-relaxed ${
+                                isMentioned
+                                  ? 'border-l-2 border-accent bg-accent/5 pl-2.5 rounded-bl-sm text-slate-200'
+                                  : isOwn
+                                    ? 'bg-accent text-white rounded-br-sm'
+                                    : 'bg-surface border border-border text-slate-200 rounded-bl-sm'
+                              }`
                         }>
-                          <MessageContent
-                            msg={msg}
-                            currentUserId={user.id}
-                            groupMembers={groupMembers}
-                            onVote={votePoll}
-                          />
+                          {searchQuery.trim() && !isImage && !isPoll ? (
+                            <span className="break-words whitespace-pre-wrap text-sm">
+                              {highlightSearch(msg.content || '')}
+                            </span>
+                          ) : (
+                            <MessageContent
+                              msg={msg}
+                              currentUserId={user.id}
+                              groupMembers={groupMembers}
+                              onVote={votePoll}
+                              onLightbox={setLightboxSrc}
+                            />
+                          )}
                         </div>
                         <span className="text-xs text-muted mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {timeAgo(msg.created_at)}
@@ -545,6 +727,42 @@ export default function Chat() {
         )}
       </AnimatePresence>
 
+      {/* Image preview before send */}
+      <AnimatePresence>
+        {imagePreview && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}
+            className="mx-4 mb-2 p-3 bg-card border border-border rounded-2xl flex items-end gap-3 shadow-xl"
+          >
+            <img
+              src={imagePreview.url}
+              alt="preview"
+              className="w-24 h-20 object-cover rounded-xl border border-border shrink-0"
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-muted truncate mb-2">{imagePreview.file.name}</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={cancelImagePreview}
+                  className="px-3 py-1.5 text-xs text-muted hover:text-white border border-border rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={sendImage}
+                  disabled={uploading}
+                  className="px-3 py-1.5 text-xs bg-accent hover:bg-accent-hover text-white font-medium rounded-lg transition-colors disabled:opacity-40 flex items-center gap-1.5"
+                >
+                  {uploading
+                    ? <><div className="w-3 h-3 border border-white/40 border-t-white rounded-full animate-spin" /> Sending...</>
+                    : <><Send size={11} /> Send</>}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* @Mention Dropdown */}
       <AnimatePresence>
         {filteredMentions.length > 0 && (
@@ -576,13 +794,10 @@ export default function Chat() {
           <button
             type="button"
             onClick={() => imageInputRef.current?.click()}
-            disabled={uploading}
-            className="p-2.5 text-muted hover:text-white hover:bg-surface rounded-full transition-colors shrink-0 disabled:opacity-40"
+            className="p-2.5 text-muted hover:text-white hover:bg-surface rounded-full transition-colors shrink-0"
             title="Send image"
           >
-            {uploading
-              ? <div className="w-4 h-4 border-2 border-border border-t-accent rounded-full animate-spin" />
-              : <ImageIcon size={16} />}
+            <ImageIcon size={16} />
           </button>
           {groupInfo && (
             <button
