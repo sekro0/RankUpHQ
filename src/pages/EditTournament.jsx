@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useRef, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Trophy, Camera, X } from 'lucide-react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -8,12 +8,15 @@ import { useAuthStore } from '../store/authStore'
 import { useGamesStore } from '../store/gamesStore'
 import { useT } from '../store/langStore'
 import Button from '../components/ui/Button'
+import Spinner from '../components/ui/Spinner'
 
-export default function CreateTournament() {
+export default function EditTournament() {
   const navigate = useNavigate()
+  const { id } = useParams()
   const { user } = useAuthStore()
   const { games } = useGamesStore()
   const { t } = useT()
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [uploadingBanner, setUploadingBanner] = useState(false)
@@ -24,6 +27,29 @@ export default function CreateTournament() {
     max_participants: 8, min_team_size: 1, prize_info: '', rules: '', starts_at: '',
     description: '', image_url: '', banner_url: ''
   })
+
+  useEffect(() => { loadTournament() }, [id])
+
+  const loadTournament = async () => {
+    const { data, error } = await supabase.from('tournaments').select('*').eq('id', id).single()
+    if (error || !data) { navigate('/tournaments'); return }
+    if (data.organizer_id !== user?.id) { navigate(`/tournaments/${id}`); return }
+    setForm({
+      name: data.name || '',
+      game_id: data.game_id || '',
+      format: data.format || 'single_elimination',
+      participant_type: data.participant_type || 'team',
+      max_participants: data.max_participants || 8,
+      min_team_size: data.min_team_size || 1,
+      prize_info: data.prize_info || '',
+      rules: data.rules || '',
+      starts_at: data.starts_at ? data.starts_at.slice(0, 16) : '',
+      description: data.description || '',
+      image_url: data.image_url || '',
+      banner_url: data.banner_url || '',
+    })
+    setLoading(false)
+  }
 
   const update = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
 
@@ -65,16 +91,15 @@ export default function CreateTournament() {
     try {
       const payload = {
         ...form,
-        organizer_id: user.id,
         game_id: form.game_id || null,
         starts_at: form.starts_at || null,
         max_participants: parseInt(form.max_participants),
         min_team_size: form.participant_type === 'team' ? parseInt(form.min_team_size) || 1 : null,
       }
-      const { data, error } = await supabase.from('tournaments').insert(payload).select().single()
+      const { error } = await supabase.from('tournaments').update(payload).eq('id', id)
       if (error) throw error
-      toast.success('Tournament created!')
-      navigate(`/tournaments/${data.id}`)
+      toast.success('Tournament updated!')
+      navigate(`/tournaments/${id}`)
     } catch (err) { toast.error(err.message) }
     finally { setSaving(false) }
   }
@@ -82,19 +107,25 @@ export default function CreateTournament() {
   const inputClass = "w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-slate-200 placeholder-muted text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
   const labelClass = "text-sm font-medium text-slate-300 block mb-1.5"
 
+  if (loading) return (
+    <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+      <Spinner size="lg" />
+    </div>
+  )
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-8">
-        <button onClick={() => navigate('/tournaments')} className="p-2 text-muted hover:text-white hover:bg-surface rounded-lg transition-colors">
+        <button onClick={() => navigate(`/tournaments/${id}`)} className="p-2 text-muted hover:text-white hover:bg-surface rounded-lg transition-colors">
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-2xl font-black text-white">{t('create_tournament')}</h1>
+        <h1 className="text-2xl font-black text-white">{t('edit_tournament')}</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
           <label className={labelClass}>{t('tournament_name')} <span className="text-red-400">*</span></label>
-          <input className={inputClass} value={form.name} onChange={e => update('name', e.target.value)} placeholder="Spring Championship 2025" required />
+          <input className={inputClass} value={form.name} onChange={e => update('name', e.target.value)} required />
         </div>
 
         {/* Banner + Image */}
@@ -167,13 +198,7 @@ export default function CreateTournament() {
         {form.participant_type === 'team' && (
           <div>
             <label className={labelClass}>{t('min_members')} <span className="text-muted">{t('min_members_hint')}</span></label>
-            <input
-              type="number" min={1} max={20}
-              className={inputClass}
-              value={form.min_team_size}
-              onChange={e => update('min_team_size', e.target.value)}
-              placeholder="1"
-            />
+            <input type="number" min={1} max={20} className={inputClass} value={form.min_team_size} onChange={e => update('min_team_size', e.target.value)} />
           </div>
         )}
 
@@ -201,7 +226,7 @@ export default function CreateTournament() {
 
         <div>
           <label className={labelClass}>{t('prize')} <span className="text-muted">{t('prize_hint')}</span></label>
-          <input className={inputClass} value={form.prize_info} onChange={e => update('prize_info', e.target.value)} placeholder="e.g. $100 prize pool, Discord Nitro..." />
+          <input className={inputClass} value={form.prize_info} onChange={e => update('prize_info', e.target.value)} />
         </div>
 
         <div>
@@ -215,8 +240,8 @@ export default function CreateTournament() {
         </div>
 
         <div className="flex gap-3 pt-4 border-t border-border">
-          <Button type="submit" loading={saving} size="lg"><Trophy size={16} /> {t('create_tournament')}</Button>
-          <Button type="button" variant="secondary" size="lg" onClick={() => navigate('/tournaments')}>{t('cancel')}</Button>
+          <Button type="submit" loading={saving} size="lg"><Trophy size={16} /> {t('update_tournament')}</Button>
+          <Button type="button" variant="secondary" size="lg" onClick={() => navigate(`/tournaments/${id}`)}>{t('cancel')}</Button>
         </div>
       </form>
     </motion.div>

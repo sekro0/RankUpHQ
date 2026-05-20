@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
+import { useT } from '../store/langStore'
 import { GAMES, GAME_BY_ID } from '../utils/constants'
 import Avatar from '../components/ui/Avatar'
 import Badge from '../components/ui/Badge'
@@ -14,6 +15,7 @@ import { timeAgo, formatDate } from '../utils/formatters'
 export default function Dashboard() {
   const navigate = useNavigate()
   const { user, profile } = useAuthStore()
+  const { t } = useT()
   const [activeQueues, setActiveQueues] = useState([])
   const [recentConvos, setRecentConvos] = useState([])
   const [upcomingTournaments, setUpcomingTournaments] = useState([])
@@ -76,7 +78,7 @@ export default function Dashboard() {
   const leaveQueue = async (entryId) => {
     await supabase.from('queue_entries').delete().eq('id', entryId)
     setActiveQueues(prev => prev.filter(q => q.id !== entryId))
-    toast.success('Left queue')
+    toast.success(t('leave'))
   }
 
   const acceptInvite = async (invite) => {
@@ -92,11 +94,10 @@ export default function Dashboard() {
   const declineInvite = async (inviteId) => {
     await supabase.from('team_invites').update({ status: 'declined' }).eq('id', inviteId)
     setPendingInvites(prev => prev.filter(i => i.id !== inviteId))
-    toast.success('Invite declined')
   }
 
   const hour = new Date().getHours()
-  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  const greeting = hour < 12 ? t('good_morning') : hour < 18 ? t('good_afternoon') : t('good_evening')
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -110,14 +111,13 @@ export default function Dashboard() {
           <h1 className="text-2xl font-black text-white mt-0.5">{profile?.display_name || profile?.username || 'Player'}</h1>
         </div>
 
-        {/* Stats inline */}
         {!loading && (
           <div className="ml-auto hidden sm:flex items-center divide-x divide-border border border-border rounded bg-card">
             {[
-              { icon: Zap, value: stats.queues, label: 'Queues', color: 'text-accent' },
-              { icon: MessageSquare, value: stats.messages, label: 'Chats', color: 'text-slate-400' },
-              { icon: Users, value: stats.teams, label: 'Teams', color: 'text-emerald-400' },
-              { icon: Trophy, value: stats.tournaments, label: 'Events', color: 'text-yellow-400' },
+              { icon: Zap, value: stats.queues, label: t('queues'), color: 'text-accent' },
+              { icon: MessageSquare, value: stats.messages, label: t('chats'), color: 'text-slate-400' },
+              { icon: Users, value: stats.teams, label: t('teams'), color: 'text-emerald-400' },
+              { icon: Trophy, value: stats.tournaments, label: t('events'), color: 'text-yellow-400' },
             ].map(({ icon: Icon, value, label, color }) => (
               <div key={label} className="flex items-center gap-2 px-4 py-2.5">
                 <Icon size={13} className={color} />
@@ -140,7 +140,7 @@ export default function Dashboard() {
               className="bg-card border border-amber-500/30 rounded overflow-hidden">
               <div className="px-4 py-3 border-b border-border flex items-center gap-2">
                 <Bell size={13} className="text-amber-400" />
-                <span className="text-xs font-semibold uppercase tracking-widest text-amber-400">Team Invites</span>
+                <span className="text-xs font-semibold uppercase tracking-widest text-amber-400">{t('team_invites')}</span>
                 <Badge color="warning">{pendingInvites.length}</Badge>
               </div>
               <div className="divide-y divide-border">
@@ -149,13 +149,13 @@ export default function Dashboard() {
                     <Avatar src={invite.inviter?.avatar_url} name={invite.inviter?.username} size="sm" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-white">
-                        <span className="text-accent font-medium">{invite.inviter?.username}</span> invited you to{' '}
+                        <span className="text-accent font-medium">{invite.inviter?.username}</span> {t('invited_you_to')}{' '}
                         <span className="font-bold">{invite.team?.name}</span> [{invite.team?.tag}]
                       </p>
                     </div>
                     <div className="flex gap-2 shrink-0">
-                      <Button size="sm" onClick={() => acceptInvite(invite)}>Accept</Button>
-                      <Button size="sm" variant="ghost" onClick={() => declineInvite(invite.id)}>Decline</Button>
+                      <Button size="sm" onClick={() => acceptInvite(invite)}>{t('accept')}</Button>
+                      <Button size="sm" variant="ghost" onClick={() => declineInvite(invite.id)}>{t('decline')}</Button>
                     </div>
                   </div>
                 ))}
@@ -169,16 +169,16 @@ export default function Dashboard() {
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Zap size={13} className="text-accent" />
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted">Active Queues</span>
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted">{t('active_queues')}</span>
               </div>
-              <Link to="/games" className="text-xs text-accent hover:text-accent/80 flex items-center gap-1">Browse <ArrowRight size={11} /></Link>
+              <Link to="/games" className="text-xs text-accent hover:text-accent/80 flex items-center gap-1">{t('browse')} <ArrowRight size={11} /></Link>
             </div>
             {loading ? (
               <div className="p-4 space-y-2">{[1,2].map(i => <div key={i} className="h-10 bg-surface rounded animate-pulse" />)}</div>
             ) : activeQueues.length === 0 ? (
               <div className="px-4 py-6 text-center text-muted">
-                <p className="text-sm mb-2">Not in any queues</p>
-                <Link to="/games" className="text-xs text-accent hover:underline">Find a game →</Link>
+                <p className="text-sm mb-2">{t('not_in_queues')}</p>
+                <Link to="/games" className="text-xs text-accent hover:underline">{t('find_game')}</Link>
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -200,8 +200,8 @@ export default function Dashboard() {
                         <p className="text-xs text-muted">{[entry.rank, entry.role].filter(Boolean).join(' · ') || 'Waiting...'}</p>
                       </div>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="secondary" onClick={() => navigate(`/games/${game?.slug}/queue`)}>View</Button>
-                        <Button size="sm" variant="ghost" onClick={() => leaveQueue(entry.id)}>Leave</Button>
+                        <Button size="sm" variant="secondary" onClick={() => navigate(`/games/${game?.slug}/queue`)}>{t('view')}</Button>
+                        <Button size="sm" variant="ghost" onClick={() => leaveQueue(entry.id)}>{t('leave')}</Button>
                       </div>
                     </div>
                   )
@@ -216,15 +216,15 @@ export default function Dashboard() {
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <MessageSquare size={13} className="text-slate-400" />
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted">Recent Messages</span>
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted">{t('recent_messages')}</span>
               </div>
-              <Link to="/messages" className="text-xs text-accent hover:text-accent/80 flex items-center gap-1">All <ArrowRight size={11} /></Link>
+              <Link to="/messages" className="text-xs text-accent hover:text-accent/80 flex items-center gap-1">{t('all')} <ArrowRight size={11} /></Link>
             </div>
             {loading ? (
               <div className="p-4 space-y-2">{[1,2].map(i => <div key={i} className="h-10 bg-surface rounded animate-pulse" />)}</div>
             ) : recentConvos.length === 0 ? (
               <div className="px-4 py-6 text-center text-muted">
-                <p className="text-sm">No conversations yet</p>
+                <p className="text-sm">{t('no_conversations')}</p>
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -251,7 +251,7 @@ export default function Dashboard() {
             className="bg-card border border-border rounded overflow-hidden">
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
               <Gamepad2 size={13} className="text-accent" />
-              <span className="text-xs font-semibold uppercase tracking-widest text-muted">Quick Join</span>
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted">{t('quick_join')}</span>
             </div>
             <div className="divide-y divide-border">
               {GAMES.slice(0, 5).map(game => (
@@ -269,7 +269,7 @@ export default function Dashboard() {
                 </Link>
               ))}
               <Link to="/games" className="flex items-center justify-center gap-1 py-2.5 text-xs text-muted hover:text-accent transition-colors">
-                All games <ArrowRight size={11} />
+                {t('all_games')} <ArrowRight size={11} />
               </Link>
             </div>
           </motion.div>
@@ -280,14 +280,14 @@ export default function Dashboard() {
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users size={13} className="text-emerald-400" />
-                <span className="text-xs font-semibold uppercase tracking-widest text-muted">My Teams</span>
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted">{t('my_teams')}</span>
               </div>
               <Link to="/teams" className="text-muted hover:text-accent transition-colors"><ArrowRight size={13} /></Link>
             </div>
             {myTeams.length === 0 ? (
               <div className="px-4 py-5 text-center">
-                <p className="text-xs text-muted mb-2">Not on any teams yet</p>
-                <Link to="/teams/create" className="text-xs text-accent hover:underline">Create one →</Link>
+                <p className="text-xs text-muted mb-2">{t('no_teams')}</p>
+                <Link to="/teams/create" className="text-xs text-accent hover:underline">{t('create_one')}</Link>
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -319,20 +319,20 @@ export default function Dashboard() {
               <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Trophy size={13} className="text-yellow-400" />
-                  <span className="text-xs font-semibold uppercase tracking-widest text-muted">Tournaments</span>
+                  <span className="text-xs font-semibold uppercase tracking-widest text-muted">{t('upcoming_tournaments')}</span>
                 </div>
                 <Link to="/tournaments" className="text-muted hover:text-accent transition-colors"><ArrowRight size={13} /></Link>
               </div>
               <div className="divide-y divide-border">
-                {upcomingTournaments.map(t => (
-                  <Link key={t.id} to={`/tournaments/${t.id}`}
+                {upcomingTournaments.map(t2 => (
+                  <Link key={t2.id} to={`/tournaments/${t2.id}`}
                     className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-surface transition-colors">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-slate-300 group-hover:text-white truncate">{t.name}</p>
-                      {t.starts_at && <p className="text-xs text-muted">{formatDate(t.starts_at)}</p>}
+                      <p className="text-sm text-slate-300 group-hover:text-white truncate">{t2.name}</p>
+                      {t2.starts_at && <p className="text-xs text-muted">{formatDate(t2.starts_at)}</p>}
                     </div>
-                    <Badge color={t.status === 'in_progress' ? 'warning' : 'success'} className="shrink-0">
-                      {t.status === 'in_progress' ? 'Live' : 'Open'}
+                    <Badge color={t2.status === 'in_progress' ? 'warning' : 'success'} className="shrink-0">
+                      {t2.status === 'in_progress' ? t('live') : t('open')}
                     </Badge>
                   </Link>
                 ))}

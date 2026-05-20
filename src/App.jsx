@@ -37,6 +37,7 @@ const CreateTeam = lazy(() => import('./pages/CreateTeam'))
 const Tournaments = lazy(() => import('./pages/Tournaments'))
 const TournamentDetail = lazy(() => import('./pages/TournamentDetail'))
 const CreateTournament = lazy(() => import('./pages/CreateTournament'))
+const EditTournament = lazy(() => import('./pages/EditTournament'))
 const Discover = lazy(() => import('./pages/Discover'))
 const Onboarding = lazy(() => import('./pages/Onboarding'))
 const Friends = lazy(() => import('./pages/Friends'))
@@ -74,6 +75,7 @@ export default function App() {
         <Route path="/tournaments" element={<Protect><Tournaments /></Protect>} />
         <Route path="/tournaments/create" element={<Protect><CreateTournament /></Protect>} />
         <Route path="/tournaments/:id" element={<Protect><TournamentDetail /></Protect>} />
+        <Route path="/tournaments/:id/edit" element={<Protect><EditTournament /></Protect>} />
         <Route path="/discover" element={<Protect><Discover /></Protect>} />
         <Route path="/friends" element={<Protect><Friends /></Protect>} />
         <Route path="/onboarding" element={<Protect><Onboarding /></Protect>} />

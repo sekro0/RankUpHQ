@@ -4,9 +4,11 @@ import { Gamepad2, Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../lib/supabase'
+import { useT } from '../store/langStore'
 
 export default function Auth({ mode = 'login' }) {
   const navigate = useNavigate()
+  const { t } = useT()
   const [tab, setTab] = useState(mode)
   const [loading, setLoading] = useState(false)
   const [showPass, setShowPass] = useState(false)
@@ -23,7 +25,7 @@ export default function Auth({ mode = 'login' }) {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
       if (error) throw new Error('Invalid email or password')
-      toast.success('Welcome back!')
+      toast.success(t('welcome_back') + '!')
       navigate('/dashboard')
     } catch (err) {
       setError(err.message)
@@ -56,7 +58,6 @@ export default function Auth({ mode = 'login' }) {
         throw error
       }
 
-      // If session exists (email confirmation disabled), upsert profile directly
       if (data.session) {
         await supabase.from('profiles')
           .upsert({
@@ -66,10 +67,9 @@ export default function Auth({ mode = 'login' }) {
             onboarding_completed: false,
             updated_at: new Date().toISOString()
           }, { onConflict: 'id' })
-        toast.success('Account created! Welcome to GameMatch!')
+        toast.success('Account created!')
         navigate('/onboarding')
       } else {
-        // Email confirmation required — trigger handles username via metadata
         toast.success('Account created! Check your email to confirm.')
         setTab('login')
       }
@@ -113,13 +113,13 @@ export default function Auth({ mode = 'login' }) {
 
           {/* Tabs */}
           <div className="flex bg-surface rounded-xl p-1 mb-8 border border-border">
-            {['login', 'register'].map((t) => (
+            {['login', 'register'].map((tabKey) => (
               <button
-                key={t}
-                onClick={() => { setTab(t); setError('') }}
-                className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all ${tab === t ? 'bg-accent text-white' : 'text-muted hover:text-white'}`}
+                key={tabKey}
+                onClick={() => { setTab(tabKey); setError('') }}
+                className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all ${tab === tabKey ? 'bg-accent text-white' : 'text-muted hover:text-white'}`}
               >
-                {t === 'login' ? 'Log In' : 'Sign Up'}
+                {tabKey === 'login' ? t('log_in') : t('sign_up')}
               </button>
             ))}
           </div>
@@ -133,13 +133,13 @@ export default function Auth({ mode = 'login' }) {
               {tab === 'login' ? (
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div>
-                    <h2 className="text-2xl font-bold text-white">Welcome back</h2>
-                    <p className="text-muted text-sm mt-1">Log in to your GameMatch account</p>
+                    <h2 className="text-2xl font-bold text-white">{t('welcome_back')}</h2>
+                    <p className="text-muted text-sm mt-1">{t('log_in_to_account')}</p>
                   </div>
 
                   <div className="space-y-3">
                     <div>
-                      <label className="text-sm font-medium text-slate-300 block mb-1.5">Email</label>
+                      <label className="text-sm font-medium text-slate-300 block mb-1.5">{t('email')}</label>
                       <input
                         type="email" required
                         value={form.email} onChange={e => update('email', e.target.value)}
@@ -148,7 +148,7 @@ export default function Auth({ mode = 'login' }) {
                       />
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-slate-300 block mb-1.5">Password</label>
+                      <label className="text-sm font-medium text-slate-300 block mb-1.5">{t('password')}</label>
                       <div className="relative">
                         <input
                           type={showPass ? 'text' : 'password'} required
@@ -173,34 +173,34 @@ export default function Auth({ mode = 'login' }) {
                   <button type="submit" disabled={loading}
                     className="w-full py-3 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {loading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Logging in...</> : 'Log In'}
+                    {loading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('logging_in_text')}</> : t('log_in')}
                   </button>
 
                   <p className="text-center text-sm text-muted">
-                    Don't have an account?{' '}
-                    <button type="button" onClick={() => setTab('register')} className="text-accent hover:text-accent/80 font-medium">Sign up free</button>
+                    {t('no_account')}{' '}
+                    <button type="button" onClick={() => setTab('register')} className="text-accent hover:text-accent/80 font-medium">{t('sign_up_free')}</button>
                   </p>
                 </form>
               ) : (
                 <form onSubmit={handleRegister} className="space-y-4">
                   <div>
-                    <h2 className="text-2xl font-bold text-white">Create account</h2>
-                    <p className="text-muted text-sm mt-1">Join the GameMatch community</p>
+                    <h2 className="text-2xl font-bold text-white">{t('create_account')}</h2>
+                    <p className="text-muted text-sm mt-1">{t('join_community')}</p>
                   </div>
 
                   <div className="space-y-3">
                     <div>
-                      <label className="text-sm font-medium text-slate-300 block mb-1.5">Username <span className="text-red-400">*</span></label>
+                      <label className="text-sm font-medium text-slate-300 block mb-1.5">{t('username_label')} <span className="text-red-400">*</span></label>
                       <input
                         type="text" required
                         value={form.username} onChange={e => update('username', e.target.value)}
                         placeholder="xX_ProGamer_Xx"
                         className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-slate-200 placeholder-muted text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
                       />
-                      <p className="text-xs text-muted mt-1">Only letters, numbers, and underscores</p>
+                      <p className="text-xs text-muted mt-1">{t('only_letters')}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-slate-300 block mb-1.5">Email</label>
+                      <label className="text-sm font-medium text-slate-300 block mb-1.5">{t('email')}</label>
                       <input
                         type="email" required
                         value={form.email} onChange={e => update('email', e.target.value)}
@@ -209,12 +209,12 @@ export default function Auth({ mode = 'login' }) {
                       />
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-slate-300 block mb-1.5">Password</label>
+                      <label className="text-sm font-medium text-slate-300 block mb-1.5">{t('password')}</label>
                       <div className="relative">
                         <input
                           type={showPass ? 'text' : 'password'} required
                           value={form.password} onChange={e => update('password', e.target.value)}
-                          placeholder="Min. 6 characters"
+                          placeholder={t('min_chars')}
                           className="w-full px-3 py-2.5 pr-10 bg-surface border border-border rounded-lg text-slate-200 placeholder-muted text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
                         />
                         <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-white">
@@ -223,12 +223,12 @@ export default function Auth({ mode = 'login' }) {
                       </div>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-slate-300 block mb-1.5">Confirm Password</label>
+                      <label className="text-sm font-medium text-slate-300 block mb-1.5">{t('confirm_password')}</label>
                       <div className="relative">
                         <input
                           type={showConfirmPass ? 'text' : 'password'} required
                           value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)}
-                          placeholder="Repeat your password"
+                          placeholder={t('repeat_password')}
                           className={`w-full px-3 py-2.5 pr-10 bg-surface border rounded-lg text-slate-200 placeholder-muted text-sm focus:outline-none focus:ring-1 transition-colors ${
                             form.confirmPassword && form.confirmPassword !== form.password
                               ? 'border-red-500/60 focus:border-red-500 focus:ring-red-500/30'
@@ -254,17 +254,15 @@ export default function Auth({ mode = 'login' }) {
                   <button type="submit" disabled={loading}
                     className="w-full py-3 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {loading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Creating account...</> : 'Create Account'}
+                    {loading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />{t('creating_account_text')}</> : t('sign_up')}
                   </button>
 
                   <p className="text-center text-sm text-muted">
-                    Already have an account?{' '}
-                    <button type="button" onClick={() => setTab('login')} className="text-accent hover:text-accent/80 font-medium">Log in</button>
+                    {t('have_account')}{' '}
+                    <button type="button" onClick={() => setTab('login')} className="text-accent hover:text-accent/80 font-medium">{t('log_in')}</button>
                   </p>
 
-                  <p className="text-xs text-muted text-center">
-                    By signing up you agree to our Terms of Service and Privacy Policy
-                  </p>
+                  <p className="text-xs text-muted text-center">{t('agree_terms')}</p>
                 </form>
               )}
             </motion.div>

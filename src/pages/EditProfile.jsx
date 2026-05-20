@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
+import { useT } from '../store/langStore'
 import Button from '../components/ui/Button'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import Avatar from '../components/ui/Avatar'
@@ -13,6 +14,7 @@ import { useGamesStore } from '../store/gamesStore'
 export default function EditProfile() {
   const navigate = useNavigate()
   const { user, profile, setProfile } = useAuthStore()
+  const { t } = useT()
   const { games, gameById } = useGamesStore()
   const [saving, setSaving] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
@@ -123,7 +125,6 @@ export default function EditProfile() {
   const removeGame = async (id) => {
     await supabase.from('user_games').delete().eq('id', id)
     setUserGames(prev => prev.filter(g => g.id !== id))
-    toast.success('Game removed')
   }
 
   const selectedGame = gameById[newGame.game_id]
@@ -152,13 +153,13 @@ export default function EditProfile() {
         <button onClick={() => navigate(-1)} className="p-2 text-muted hover:text-white hover:bg-surface rounded-lg transition-colors">
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-2xl font-black text-white">Edit Profile</h1>
+        <h1 className="text-2xl font-black text-white">{t('edit_profile')}</h1>
       </div>
 
       <form onSubmit={handleSave} className="space-y-8">
         {/* Banner + Avatar */}
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">Appearance</h2>
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">{t('appearance')}</h2>
           <div className="relative">
             {/* Banner */}
             <div className="h-36 rounded-xl overflow-hidden bg-gradient-to-br from-accent/30 via-surface to-accent2/20 cursor-pointer group relative" onClick={() => bannerRef.current?.click()}>
@@ -168,13 +169,12 @@ export default function EditProfile() {
               </div>
             </div>
             <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={handleBannerChange} />
-            {/* Delete banner button */}
             {form.banner_url && (
               <button
                 type="button"
                 onClick={() => update('banner_url', '')}
                 className="absolute top-2 right-2 p-1 bg-black/60 hover:bg-red-500/80 rounded-full text-white transition-colors z-10"
-                title="Remove banner"
+                title={t('to_remove')}
               >
                 <X size={14} />
               </button>
@@ -191,44 +191,43 @@ export default function EditProfile() {
                 </div>
               </div>
               <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
-              {/* Delete avatar button */}
               {form.avatar_url && (
                 <button
                   type="button"
                   onClick={() => update('avatar_url', '')}
                   className="mb-0.5 p-1 bg-surface border border-border hover:border-red-500/50 hover:bg-red-500/10 rounded-full text-muted hover:text-red-400 transition-colors"
-                  title="Remove avatar"
+                  title={t('to_remove')}
                 >
                   <X size={12} />
                 </button>
               )}
             </div>
           </div>
-          <div className="pt-10 text-xs text-muted">Click on banner or avatar to change · click <X size={10} className="inline" /> to remove</div>
+          <div className="pt-10 text-xs text-muted">{t('click_to_change')} <X size={10} className="inline" /> {t('to_remove')}</div>
         </div>
 
         {/* Basic Info */}
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">Basic Info</h2>
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">{t('basic_info')}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className={labelClass}>Username <span className="text-red-400">*</span></label>
+              <label className={labelClass}>{t('username')} <span className="text-red-400">*</span></label>
               <input className={inputClass} value={form.username} onChange={e => update('username', e.target.value)} placeholder="your_username" required />
             </div>
             <div>
-              <label className={labelClass}>Display Name</label>
+              <label className={labelClass}>{t('display_name')}</label>
               <input className={inputClass} value={form.display_name} onChange={e => update('display_name', e.target.value)} placeholder="Your Name" />
             </div>
             <div>
-              <label className={labelClass}>Age</label>
+              <label className={labelClass}>{t('age')}</label>
               <input className={inputClass} type="number" min="13" max="100" value={form.age} onChange={e => update('age', e.target.value)} placeholder="25" />
             </div>
             <div>
-              <label className={labelClass}>Country</label>
+              <label className={labelClass}>{t('country')}</label>
               <input className={inputClass} value={form.country} onChange={e => update('country', e.target.value)} placeholder="Argentina" />
             </div>
             <div className="sm:col-span-2">
-              <label className={labelClass}>Bio</label>
+              <label className={labelClass}>{t('bio')}</label>
               <textarea className={`${inputClass} resize-none`} rows={3} value={form.bio} onChange={e => update('bio', e.target.value)} placeholder="Tell other players about yourself..." maxLength={300} />
               <p className="text-xs text-muted mt-1">{form.bio.length}/300</p>
             </div>
@@ -237,7 +236,7 @@ export default function EditProfile() {
 
         {/* Social Links */}
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">Social Links</h2>
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">{t('social_links')}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
               { key: 'discord_tag', label: 'Discord', placeholder: 'username#0000' },
@@ -257,9 +256,9 @@ export default function EditProfile() {
         {/* Games */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">My Games</h2>
+            <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">{t('my_games')}</h2>
             <Button type="button" variant="secondary" size="sm" onClick={() => setAddingGame(!addingGame)}>
-              <Plus size={14} /> Add Game
+              <Plus size={14} /> {t('add_game')}
             </Button>
           </div>
 
@@ -267,20 +266,20 @@ export default function EditProfile() {
             <div className="p-4 bg-surface border border-border rounded-xl space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <select className={inputClass} value={newGame.game_id} onChange={e => setNewGame(prev => ({ ...prev, game_id: e.target.value, rank: '', role: '' }))}>
-                  <option value="">Select game...</option>
+                  <option value="">{t('select_game')}</option>
                   {games.filter(g => !userGames.find(ug => ug.game_id === g.id)).map(g => (
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
                 </select>
                 {selectedGame?.has_ranks && selectedGame.ranks.length > 0 && (
                   <select className={inputClass} value={newGame.rank} onChange={e => setNewGame(prev => ({ ...prev, rank: e.target.value }))}>
-                    <option value="">Select rank...</option>
+                    <option value="">{t('select_rank')}</option>
                     {selectedGame.ranks.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
                 )}
                 {selectedGame?.has_roles && selectedGame.roles.length > 0 && (
                   <select className={inputClass} value={newGame.role} onChange={e => setNewGame(prev => ({ ...prev, role: e.target.value }))}>
-                    <option value="">Select role...</option>
+                    <option value="">{t('select_role')}</option>
                     {selectedGame.roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
                 )}
@@ -289,16 +288,16 @@ export default function EditProfile() {
                 <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
                   <input type="checkbox" checked={newGame.is_main} onChange={e => setNewGame(prev => ({ ...prev, is_main: e.target.checked }))}
                     className="accent-accent" />
-                  Main game
+                  {t('main_game')}
                 </label>
-                <Button type="button" size="sm" onClick={addGame}>Add</Button>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setAddingGame(false)}>Cancel</Button>
+                <Button type="button" size="sm" onClick={addGame}>{t('add')}</Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setAddingGame(false)}>{t('cancel')}</Button>
               </div>
             </div>
           )}
 
           {userGames.length === 0 ? (
-            <p className="text-sm text-muted text-center py-4">No games added yet. Add your favorite games!</p>
+            <p className="text-sm text-muted text-center py-4">{t('no_games_added')}</p>
           ) : (
             <div className="space-y-2">
               {userGames.map(ug => {
@@ -311,7 +310,7 @@ export default function EditProfile() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-white">{game?.name}</p>
-                      <p className="text-xs text-muted">{[ug.rank, ug.role].filter(Boolean).join(' · ')}{ug.is_main ? ' · Main' : ''}</p>
+                      <p className="text-xs text-muted">{[ug.rank, ug.role].filter(Boolean).join(' · ')}{ug.is_main ? ` · ${t('main_game')}` : ''}</p>
                     </div>
                     <button type="button" onClick={() => removeGame(ug.id)} className="text-muted hover:text-red-400 transition-colors p-1">
                       <Trash2 size={15} />
@@ -325,17 +324,17 @@ export default function EditProfile() {
 
         <div className="flex gap-3 pt-4 border-t border-border">
           <Button type="submit" loading={saving} size="lg">
-            <Save size={16} /> Save Profile
+            <Save size={16} /> {t('save_profile')}
           </Button>
-          <Button type="button" variant="secondary" size="lg" onClick={() => navigate(-1)}>Cancel</Button>
+          <Button type="button" variant="secondary" size="lg" onClick={() => navigate(-1)}>{t('cancel')}</Button>
         </div>
 
         <div className="border border-red-500/20 rounded-xl p-4 bg-red-500/5">
-          <h3 className="text-sm font-semibold text-red-400 mb-1">Danger Zone</h3>
-          <p className="text-xs text-muted mb-3">Permanently delete your account and all your data. This cannot be undone.</p>
+          <h3 className="text-sm font-semibold text-red-400 mb-1">{t('danger_zone')}</h3>
+          <p className="text-xs text-muted mb-3">{t('delete_account_desc')}</p>
           <button type="button" onClick={() => setConfirmDeleteAccount(true)}
             className="px-4 py-2 text-sm font-medium text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/10 transition-colors">
-            Delete Account
+            {t('delete_account')}
           </button>
         </div>
       </form>
@@ -344,9 +343,9 @@ export default function EditProfile() {
         open={confirmDeleteAccount}
         onClose={() => setConfirmDeleteAccount(false)}
         onConfirm={deleteAccount}
-        title="Delete your account"
-        message="All your data, matches, messages, and team memberships will be permanently deleted. This cannot be undone."
-        confirmText="Delete my account"
+        title={t('delete_account')}
+        message={t('delete_account_desc')}
+        confirmText={t('delete_my_account_btn')}
         loading={deletingAccount}
       />
     </motion.div>

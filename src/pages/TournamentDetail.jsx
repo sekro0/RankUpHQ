@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Trophy, Users, Calendar, CheckCircle, Play, Award, XCircle, LogOut } from 'lucide-react'
+import { ArrowLeft, Trophy, Users, Calendar, CheckCircle, Play, Award, XCircle, LogOut, Pencil } from 'lucide-react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
+import { useT } from '../store/langStore'
 import { GAME_BY_ID } from '../utils/constants'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
@@ -13,25 +14,19 @@ import Modal from '../components/ui/Modal'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { formatDate } from '../utils/formatters'
 
-const STATUS_CONFIG = {
-  open: { label: 'Open', color: 'success' },
-  in_progress: { label: 'In Progress', color: 'warning' },
-  completed: { label: 'Completed', color: 'default' },
-  cancelled: { label: 'Cancelled', color: 'danger' },
-}
-
-const FORMAT_LABELS = {
-  single_elimination: 'Single Elimination',
-  double_elimination: 'Double Elimination',
-  round_robin: 'Round Robin',
-}
-
-function BracketView({ matches, participants }) {
+function BracketView({ matches, participants, t }) {
   const rounds = [...new Set(matches.map(m => m.round))].sort((a, b) => a - b)
+  const maxRound = Math.max(...rounds)
 
   const getParticipantName = (id) => {
     const p = participants.find(pt => pt.id === id)
     return p?.team?.name || p?.profile?.username || 'TBD'
+  }
+
+  const roundLabel = (round) => {
+    if (round === maxRound) return t('final') || 'Final'
+    if (round === maxRound - 1) return t('semi_final') || 'Semi-Final'
+    return `Round ${round}`
   }
 
   return (
@@ -40,9 +35,7 @@ function BracketView({ matches, participants }) {
         {rounds.map(round => (
           <div key={round} className="flex flex-col gap-4 w-52">
             <div className="text-center">
-              <span className="text-xs font-semibold text-muted uppercase tracking-wider">
-                {round === Math.max(...rounds) ? 'Final' : round === Math.max(...rounds) - 1 ? 'Semi-Final' : `Round ${round}`}
-              </span>
+              <span className="text-xs font-semibold text-muted uppercase tracking-wider">{roundLabel(round)}</span>
             </div>
             <div className="flex flex-col justify-around flex-1 gap-4">
               {matches.filter(m => m.round === round).map(match => (
@@ -75,6 +68,7 @@ export default function TournamentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const { t } = useT()
   const [tournament, setTournament] = useState(null)
   const [participants, setParticipants] = useState([])
   const [matches, setMatches] = useState([])
@@ -99,12 +93,12 @@ export default function TournamentDetail() {
 
   const loadTournament = async () => {
     setLoading(true)
-    const { data: t } = await supabase
+    const { data: trn } = await supabase
       .from('tournaments')
       .select('*, game:games(id,name), organizer:profiles!organizer_id(id,username,avatar_url)')
       .eq('id', id).single()
-    if (!t) { navigate('/tournaments'); return }
-    setTournament(t)
+    if (!trn) { navigate('/tournaments'); return }
+    setTournament(trn)
 
     const { data: p } = await supabase
       .from('tournament_participants')
@@ -136,7 +130,7 @@ export default function TournamentDetail() {
     try {
       const payload = { tournament_id: id }
       if (tournament.participant_type === 'team') {
-        if (!selectedTeam) { toast.error('Select a team'); return }
+        if (!selectedTeam) { toast.error(t('select_team')); return }
         if (tournament.min_team_size > 1) {
           const { count } = await supabase.from('team_members')
             .select('user_id', { count: 'exact', head: true })
@@ -153,7 +147,7 @@ export default function TournamentDetail() {
         payload.user_id = user.id
       }
       await supabase.from('tournament_participants').insert(payload)
-      toast.success('Registered!')
+      toast.success(t('registered_badge') + '!')
       loadTournament()
     } catch (err) {
       if (err.code === '23505') toast.error('Already registered')
@@ -167,7 +161,7 @@ export default function TournamentDetail() {
     setUnregistering(true)
     try {
       await supabase.from('tournament_participants').delete().eq('id', myParticipant.id)
-      toast.success('Unregistered from tournament')
+      toast.success(t('unregister'))
       loadTournament()
     } catch { toast.error('Failed to unregister') }
     finally { setUnregistering(false) }
@@ -175,9 +169,9 @@ export default function TournamentDetail() {
 
   const cancelTournament = async () => {
     showConfirm({
-      title: 'Cancel tournament',
+      title: t('cancel_tournament_btn') + ' tournament',
       message: 'This will permanently cancel the tournament and notify all participants. This cannot be undone.',
-      confirmText: 'Cancel tournament',
+      confirmText: t('cancel_tournament_btn') + ' tournament',
       onConfirm: doCancelTournament,
     })
   }
@@ -194,9 +188,9 @@ export default function TournamentDetail() {
 
   const startTournament = async () => {
     showConfirm({
-      title: 'Start tournament',
+      title: t('start_tournament') + ' tournament',
       message: 'This will lock registrations and generate the bracket. You cannot add more participants after this.',
-      confirmText: 'Start',
+      confirmText: t('start_tournament'),
       variant: 'warning',
       onConfirm: doStartTournament,
     })
@@ -255,19 +249,36 @@ export default function TournamentDetail() {
   const isOrganizer = user?.id === tournament.organizer_id
   const isRegistered = participants.some(p => p.user_id === user?.id)
   const isFull = participants.length >= tournament.max_participants
-  const statusCfg = STATUS_CONFIG[tournament.status] || STATUS_CONFIG.open
   const game = tournament.game || GAME_BY_ID[tournament.game_id]
-  const tabs = ['overview', 'participants', ...(matches.length > 0 ? ['bracket'] : []), 'rules']
+
+  const STATUS_LABELS = {
+    open: t('open'),
+    in_progress: t('live'),
+    completed: 'Completed',
+    cancelled: 'Cancelled',
+  }
+  const STATUS_COLORS = { open: 'success', in_progress: 'warning', completed: 'default', cancelled: 'danger' }
+  const FORMAT_LABELS = {
+    single_elimination: t('single_elim'),
+    double_elimination: t('double_elim'),
+    round_robin: t('round_robin'),
+  }
+
+  const tabs = [
+    { key: 'overview', label: t('overview_tab') },
+    { key: 'participants', label: t('participants_tab') },
+    ...(matches.length > 0 ? [{ key: 'bracket', label: t('bracket_tab') }] : []),
+    { key: 'rules', label: t('rules_tab') },
+  ]
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto px-4 py-8">
       <button onClick={() => navigate('/tournaments')} className="flex items-center gap-2 text-muted hover:text-white mb-6 transition-colors">
-        <ArrowLeft size={18} /> Back to Tournaments
+        <ArrowLeft size={18} /> {t('back_to_tournaments')}
       </button>
 
       {/* Header */}
       <div className="bg-card border border-border rounded-xl overflow-hidden mb-6">
-        {/* Banner */}
         <div className="relative h-36">
           {tournament.banner_url
             ? <img src={tournament.banner_url} alt="banner" className="w-full h-full object-cover" />
@@ -275,7 +286,6 @@ export default function TournamentDetail() {
           }
         </div>
         <div className="flex items-end gap-4 px-6 -mt-8 pb-0 relative">
-          {/* Tournament image/icon */}
           <div className="w-16 h-16 rounded-xl border-2 border-card overflow-hidden bg-surface shrink-0 shadow-lg">
             {tournament.image_url
               ? <img src={tournament.image_url} alt={tournament.name} className="w-full h-full object-cover" />
@@ -287,21 +297,26 @@ export default function TournamentDetail() {
           <div className="flex-1 min-w-0 pb-3">
             <h1 className="text-2xl font-black text-white truncate">{tournament.name}</h1>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <Badge color={statusCfg.color}>{statusCfg.label}</Badge>
+              <Badge color={STATUS_COLORS[tournament.status] || 'success'}>{STATUS_LABELS[tournament.status] || tournament.status}</Badge>
               {game && <Badge>{game.name}</Badge>}
-              <Badge color="cyan">{FORMAT_LABELS[tournament.format]}</Badge>
-              <Badge>{tournament.participant_type === 'team' ? 'Teams' : 'Solo'}</Badge>
+              <Badge color="cyan">{FORMAT_LABELS[tournament.format] || tournament.format}</Badge>
+              <Badge>{tournament.participant_type === 'team' ? t('team_type') : t('solo_type')}</Badge>
             </div>
           </div>
-          <div className="shrink-0 flex gap-2 flex-wrap justify-end">
+          <div className="shrink-0 flex gap-2 flex-wrap justify-end pb-3">
+            {isOrganizer && tournament.status === 'open' && (
+              <Button size="sm" variant="secondary" onClick={() => navigate(`/tournaments/${id}/edit`)}>
+                <Pencil size={14} /> {t('edit_tournament')}
+              </Button>
+            )}
             {isOrganizer && tournament.status === 'open' && participants.length >= 2 && (
               <Button size="sm" onClick={startTournament} loading={starting}>
-                <Play size={14} /> Start
+                <Play size={14} /> {t('start_tournament')}
               </Button>
             )}
             {isOrganizer && (tournament.status === 'open' || tournament.status === 'in_progress') && (
               <Button size="sm" variant="danger" onClick={cancelTournament} loading={cancelling}>
-                <XCircle size={14} /> Cancel
+                <XCircle size={14} /> {t('cancel_tournament_btn')}
               </Button>
             )}
             {!isRegistered && tournament.status === 'open' && !isFull && !isOrganizer && (
@@ -311,18 +326,18 @@ export default function TournamentDetail() {
                     <div className="flex gap-2">
                       <select value={selectedTeam} onChange={e => setSelectedTeam(e.target.value)}
                         className="px-2 py-1.5 bg-surface border border-border rounded-lg text-xs text-slate-200 focus:outline-none focus:border-accent">
-                        <option value="">Select team</option>
-                        {myTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        <option value="">{t('select_team')}</option>
+                        {myTeams.map(tm => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
                       </select>
-                      <Button size="sm" loading={registering} onClick={register}>Register</Button>
+                      <Button size="sm" loading={registering} onClick={register}>{t('registered_badge') === 'Registered' ? 'Register' : 'Registrarse'}</Button>
                     </div>
                   ) : (
                     <Link to="/teams/create" className="text-xs text-accent hover:underline flex items-center gap-1">
-                      <Users size={12} /> Create a team to join
+                      <Users size={12} /> {t('create_team_to_join')}
                     </Link>
                   )}
                   {tournament.min_team_size > 1 && (
-                    <span className="text-xs text-muted">Min. {tournament.min_team_size} members required</span>
+                    <span className="text-xs text-muted">Min. {tournament.min_team_size} {t('members_label')}</span>
                   )}
                 </>
               ) : (
@@ -331,14 +346,14 @@ export default function TournamentDetail() {
             )}
             {isRegistered && tournament.status === 'open' && (
               <div className="flex items-center gap-2">
-                <Badge color="success"><CheckCircle size={12} className="mr-1" /> Registered</Badge>
+                <Badge color="success"><CheckCircle size={12} className="mr-1" /> {t('registered_badge')}</Badge>
                 <Button size="sm" variant="secondary" loading={unregistering} onClick={unregister}>
-                  <LogOut size={12} /> Leave
+                  <LogOut size={12} /> {t('leave')}
                 </Button>
               </div>
             )}
             {isRegistered && tournament.status !== 'open' && (
-              <Badge color="success"><CheckCircle size={12} className="mr-1" /> Registered</Badge>
+              <Badge color="success"><CheckCircle size={12} className="mr-1" /> {t('registered_badge')}</Badge>
             )}
           </div>
         </div>
@@ -355,10 +370,10 @@ export default function TournamentDetail() {
 
       {/* Tabs */}
       <div className="flex gap-1 bg-surface border border-border rounded-xl p-1 mb-6">
-        {tabs.map(t => (
-          <button key={t} onClick={() => setActiveTab(t)}
-            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors capitalize ${activeTab === t ? 'bg-accent text-white' : 'text-muted hover:text-white'}`}>
-            {t}
+        {tabs.map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors capitalize ${activeTab === tab.key ? 'bg-accent text-white' : 'text-muted hover:text-white'}`}>
+            {tab.label}
           </button>
         ))}
       </div>
@@ -368,18 +383,18 @@ export default function TournamentDetail() {
         <div className="space-y-4">
           {tournament.description && (
             <div className="bg-card border border-border rounded-xl p-4">
-              <h3 className="text-sm font-semibold text-white mb-2">About</h3>
+              <h3 className="text-sm font-semibold text-white mb-2">{t('about')}</h3>
               <p className="text-sm text-slate-300 whitespace-pre-wrap">{tournament.description}</p>
             </div>
           )}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: 'Format', value: FORMAT_LABELS[tournament.format] },
-              { label: 'Type', value: tournament.participant_type === 'team' ? 'Team' : 'Solo' },
-              { label: 'Registered', value: `${participants.length}/${tournament.max_participants}` },
-              { label: 'Status', value: statusCfg.label },
+              { label: t('format'), value: FORMAT_LABELS[tournament.format] || tournament.format },
+              { label: t('type'), value: tournament.participant_type === 'team' ? t('team_type') : t('solo_type') },
+              { label: t('registered_badge'), value: `${participants.length}/${tournament.max_participants}` },
+              { label: 'Status', value: STATUS_LABELS[tournament.status] || tournament.status },
               ...(tournament.participant_type === 'team' && tournament.min_team_size > 1
-                ? [{ label: 'Min. team size', value: `${tournament.min_team_size} members` }]
+                ? [{ label: t('min_team_size_stat'), value: `${tournament.min_team_size} ${t('members_label')}` }]
                 : []),
             ].map(({ label, value }) => (
               <div key={label} className="bg-card border border-border rounded-xl p-3 text-center">
@@ -396,7 +411,7 @@ export default function TournamentDetail() {
           {participants.length === 0 ? (
             <div className="text-center py-12 text-muted">
               <Users size={32} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">No participants yet</p>
+              <p className="text-sm">{t('no_participants')}</p>
             </div>
           ) : (
             <div className="divide-y divide-border">
@@ -430,14 +445,14 @@ export default function TournamentDetail() {
           {matches.length === 0 ? (
             <div className="text-center py-12 text-muted">
               <Trophy size={32} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Bracket not generated yet</p>
+              <p className="text-sm">{t('bracket_not_generated')}</p>
             </div>
           ) : (
             <>
-              <BracketView matches={matches} participants={participants} />
+              <BracketView matches={matches} participants={participants} t={t} />
               {isOrganizer && (
                 <div className="mt-4 pt-4 border-t border-border">
-                  <h3 className="text-sm font-semibold text-white mb-3">Report Match Results</h3>
+                  <h3 className="text-sm font-semibold text-white mb-3">{t('report_results')}</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {matches.filter(m => m.status !== 'completed' && m.participant_a_id && m.participant_b_id).map(match => {
                       const pA = participants.find(p => p.id === match.participant_a_id)
@@ -466,14 +481,14 @@ export default function TournamentDetail() {
             <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">{tournament.rules}</p>
           ) : (
             <div className="text-center py-8 text-muted">
-              <p className="text-sm">No rules specified</p>
+              <p className="text-sm">{t('no_rules_specified')}</p>
             </div>
           )}
         </div>
       )}
 
       {/* Report Result Modal */}
-      <Modal open={!!reportModal} onClose={() => setReportModal(null)} title="Report Match Result" size="sm">
+      <Modal open={!!reportModal} onClose={() => setReportModal(null)} title={t('report_results')} size="sm">
         {reportModal && (
           <div className="space-y-4">
             {(() => {
@@ -497,7 +512,7 @@ export default function TournamentDetail() {
                 </div>
               )
             })()}
-            <Button className="w-full" onClick={reportResult}>Submit Result</Button>
+            <Button className="w-full" onClick={reportResult}>{t('submit_result')}</Button>
           </div>
         )}
       </Modal>
