@@ -1,34 +1,47 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { Target, Gamepad2, MessageSquare, Users, Trophy, Bell, LogOut, User, Settings, Menu, X, Home, Heart, UserPlus } from 'lucide-react'
+import { Target, Gamepad2, MessageSquare, Users, Trophy, Bell, LogOut, User, Settings, Menu, X, Home, Heart, UserPlus, Globe } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { useUnreadStore } from '../../store/unreadStore'
+import { useT } from '../../store/langStore'
 import Avatar from '../ui/Avatar'
+
+const LANG_OPTIONS = [
+  { code: 'es', label: 'ES', full: 'Español' },
+  { code: 'en', label: 'EN', full: 'English' },
+  { code: 'pt', label: 'PT', full: 'Português' },
+]
 
 export default function Navbar() {
   const { user, profile, clear } = useAuthStore()
   const { total, friendRequests, teamJoinRequests } = useUnreadStore()
+  const { t, lang, setLang } = useT()
   const navigate = useNavigate()
   const location = useLocation()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [langMenuOpen, setLangMenuOpen] = useState(false)
   const menuRef = useRef(null)
+  const langRef = useRef(null)
 
   const navLinks = [
-    { to: '/dashboard', icon: Home, label: 'Home' },
-    { to: '/games', icon: Gamepad2, label: 'Games' },
-    { to: '/discover', icon: Heart, label: 'Discover' },
-    { to: '/friends', icon: UserPlus, label: 'Friends', badge: friendRequests },
-    { to: '/teams', icon: Users, label: 'Teams', badge: teamJoinRequests },
-    { to: '/tournaments', icon: Trophy, label: 'Tournaments' },
-    { to: '/messages', icon: MessageSquare, label: 'Messages', badge: total },
+    { to: '/dashboard', icon: Home, label: t('home') },
+    { to: '/games', icon: Gamepad2, label: t('games') },
+    { to: '/discover', icon: Heart, label: t('discover') },
+    { to: '/friends', icon: UserPlus, label: t('friends'), badge: friendRequests },
+    { to: '/teams', icon: Users, label: t('teams'), badge: teamJoinRequests },
+    { to: '/tournaments', icon: Trophy, label: t('tournaments') },
+    { to: '/messages', icon: MessageSquare, label: t('messages'), badge: total },
   ]
 
   useEffect(() => {
-    const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setUserMenuOpen(false) }
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setUserMenuOpen(false)
+      if (langRef.current && !langRef.current.contains(e.target)) setLangMenuOpen(false)
+    }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
@@ -77,6 +90,37 @@ export default function Navbar() {
 
         {/* Right side */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Language selector */}
+          <div className="relative" ref={langRef}>
+            <button
+              onClick={() => setLangMenuOpen(!langMenuOpen)}
+              className="flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium text-muted hover:text-white hover:bg-surface transition-colors"
+            >
+              <Globe size={13} />
+              <span className="hidden sm:block">{lang.toUpperCase()}</span>
+            </button>
+            <AnimatePresence>
+              {langMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.12 }}
+                  className="absolute right-0 top-full mt-1.5 w-32 bg-card border border-border rounded-lg shadow-xl overflow-hidden"
+                >
+                  {LANG_OPTIONS.map(opt => (
+                    <button
+                      key={opt.code}
+                      onClick={() => { setLang(opt.code); setLangMenuOpen(false) }}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${lang === opt.code ? 'text-accent bg-accent/10' : 'text-slate-400 hover:text-white hover:bg-surface'}`}
+                    >
+                      <span>{opt.full}</span>
+                      <span className="font-bold">{opt.label}</span>
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
           {user ? (
             <>
               <div className="relative" ref={menuRef}>
@@ -97,13 +141,13 @@ export default function Navbar() {
                       </div>
                       <div className="p-1">
                         <Link to={`/profile/${profile?.username}`} onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-400 hover:text-white hover:bg-surface rounded transition-colors">
-                          <User size={13} /> View Profile
+                          <User size={13} /> {t('view_profile')}
                         </Link>
                         <Link to="/profile/edit" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-400 hover:text-white hover:bg-surface rounded transition-colors">
-                          <Settings size={13} /> Edit Profile
+                          <Settings size={13} /> {t('edit_profile')}
                         </Link>
                         <button onClick={handleSignOut} className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-red-400/80 hover:text-red-400 hover:bg-surface rounded transition-colors">
-                          <LogOut size={13} /> Sign Out
+                          <LogOut size={13} /> {t('sign_out')}
                         </button>
                       </div>
                     </motion.div>
@@ -116,8 +160,8 @@ export default function Navbar() {
             </>
           ) : (
             <div className="flex items-center gap-2">
-              <Link to="/login" className="px-3 py-1.5 text-xs font-medium text-muted hover:text-white transition-colors">Log In</Link>
-              <Link to="/register" className="px-3 py-1.5 text-xs font-semibold bg-accent hover:bg-accent-hover text-white rounded transition-colors">Sign Up</Link>
+              <Link to="/login" className="px-3 py-1.5 text-xs font-medium text-muted hover:text-white transition-colors">{t('log_in')}</Link>
+              <Link to="/register" className="px-3 py-1.5 text-xs font-semibold bg-accent hover:bg-accent-hover text-white rounded transition-colors">{t('sign_up')}</Link>
             </div>
           )}
         </div>

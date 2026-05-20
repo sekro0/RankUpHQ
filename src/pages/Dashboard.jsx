@@ -34,7 +34,7 @@ export default function Dashboard() {
         supabase.from('conversation_participants').select('conversation_id').eq('user_id', user.id),
         supabase.from('tournament_participants').select('tournament:tournaments(id,name,status,starts_at,game:games(name))').eq('user_id', user.id),
         supabase.from('team_invites').select('*, team:teams(id,name,tag), inviter:profiles!inviter_id(username,avatar_url)').eq('invitee_id', user.id).eq('status', 'pending'),
-        supabase.from('team_members').select('*, team:teams(id,name,tag,game:games(name))').eq('user_id', user.id),
+        supabase.from('team_members').select('*, team:teams(id,name,tag,logo_url,game:games(name))').eq('user_id', user.id),
       ])
 
       setActiveQueues(queuesRes.data || [])
@@ -186,7 +186,15 @@ export default function Dashboard() {
                   const game = entry.game || GAME_BY_ID[entry.game_id]
                   return (
                     <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
-                      <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full shrink-0" />
+                      <div className="w-7 h-7 rounded overflow-hidden shrink-0 bg-surface border border-border/50">
+                        {game?.cover_url
+                          ? <img src={game.cover_url} alt={game.name} className="w-full h-full object-cover" loading="lazy" />
+                          : <span className="w-full h-full flex items-center justify-center text-[10px] font-black"
+                              style={{ background: `${game?.color || '#7c3aed'}20`, color: game?.color || '#7c3aed' }}>
+                              {game?.name?.charAt(0) || '?'}
+                            </span>
+                        }
+                      </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-white">{game?.name || 'Unknown'}</p>
                         <p className="text-xs text-muted">{[entry.rank, entry.role].filter(Boolean).join(' · ') || 'Waiting...'}</p>
@@ -249,10 +257,13 @@ export default function Dashboard() {
               {GAMES.slice(0, 5).map(game => (
                 <Link key={game.id} to={`/games/${game.slug}/queue`}
                   className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-surface transition-colors group">
-                  <span className="w-6 h-6 rounded text-[10px] font-black flex items-center justify-center shrink-0"
-                    style={{ background: `${game.color}20`, color: game.color }}>
-                    {game.name.charAt(0)}
-                  </span>
+                  <div className="w-7 h-7 rounded overflow-hidden shrink-0 bg-surface border border-border/50">
+                    {game.cover_url
+                      ? <img src={game.cover_url} alt={game.name} className="w-full h-full object-cover" loading="lazy" />
+                      : <span className="w-full h-full flex items-center justify-center text-[10px] font-black"
+                          style={{ background: `${game.color}20`, color: game.color }}>{game.name.charAt(0)}</span>
+                    }
+                  </div>
                   <span className="text-sm text-slate-300 group-hover:text-white transition-colors flex-1 truncate">{game.name}</span>
                   <ArrowRight size={13} className="text-muted group-hover:text-accent transition-colors shrink-0" />
                 </Link>
@@ -283,8 +294,13 @@ export default function Dashboard() {
                 {myTeams.slice(0, 3).map(tm => (
                   <Link key={tm.team?.id} to={`/teams/${tm.team?.id}`}
                     className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-surface transition-colors group">
-                    <div className="w-6 h-6 rounded bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-bold text-[10px] shrink-0">
-                      {tm.team?.name?.charAt(0)}
+                    <div className="w-7 h-7 rounded overflow-hidden shrink-0 bg-accent/10 border border-accent/20">
+                      {tm.team?.logo_url
+                        ? <img src={tm.team.logo_url} alt={tm.team.name} className="w-full h-full object-cover" loading="lazy" />
+                        : <span className="w-full h-full flex items-center justify-center text-accent font-bold text-[10px]">
+                            {tm.team?.name?.charAt(0)}
+                          </span>
+                      }
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-slate-300 group-hover:text-white transition-colors truncate">{tm.team?.name}</p>

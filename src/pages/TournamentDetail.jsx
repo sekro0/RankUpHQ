@@ -267,9 +267,24 @@ export default function TournamentDetail() {
 
       {/* Header */}
       <div className="bg-card border border-border rounded-xl overflow-hidden mb-6">
-        <div className="h-28 bg-gradient-to-br from-accent/20 via-surface to-accent2/10 flex items-center px-6 gap-4">
-          <Trophy size={40} className="text-accent opacity-70 shrink-0" />
-          <div className="flex-1 min-w-0">
+        {/* Banner */}
+        <div className="relative h-36">
+          {tournament.banner_url
+            ? <img src={tournament.banner_url} alt="banner" className="w-full h-full object-cover" />
+            : <div className="w-full h-full bg-gradient-to-br from-accent/20 via-surface to-accent2/10" />
+          }
+        </div>
+        <div className="flex items-end gap-4 px-6 -mt-8 pb-0 relative">
+          {/* Tournament image/icon */}
+          <div className="w-16 h-16 rounded-xl border-2 border-card overflow-hidden bg-surface shrink-0 shadow-lg">
+            {tournament.image_url
+              ? <img src={tournament.image_url} alt={tournament.name} className="w-full h-full object-cover" />
+              : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent/30 to-accent/10">
+                  <Trophy size={28} className="text-accent opacity-80" />
+                </div>
+            }
+          </div>
+          <div className="flex-1 min-w-0 pb-3">
             <h1 className="text-2xl font-black text-white truncate">{tournament.name}</h1>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Badge color={statusCfg.color}>{statusCfg.label}</Badge>

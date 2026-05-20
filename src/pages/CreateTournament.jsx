@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Trophy } from 'lucide-react'
+import { ArrowLeft, Trophy, Camera, X } from 'lucide-react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../lib/supabase'
@@ -13,12 +13,48 @@ export default function CreateTournament() {
   const { user } = useAuthStore()
   const { games } = useGamesStore()
   const [saving, setSaving] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [uploadingBanner, setUploadingBanner] = useState(false)
+  const imageRef = useRef()
+  const bannerRef = useRef()
   const [form, setForm] = useState({
     name: '', game_id: '', format: 'single_elimination', participant_type: 'team',
-    max_participants: 8, min_team_size: 1, prize_info: '', rules: '', starts_at: '', description: ''
+    max_participants: 8, min_team_size: 1, prize_info: '', rules: '', starts_at: '',
+    description: '', image_url: '', banner_url: ''
   })
 
   const update = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
+
+  const uploadTournamentImage = async (file, path) => {
+    const ext = file.name.split('.').pop()
+    const fullPath = `${user.id}/${Date.now()}_${path}.${ext}`
+    const { error } = await supabase.storage.from('tournament-images').upload(fullPath, file, { upsert: true, contentType: file.type })
+    if (error) throw error
+    const { data } = supabase.storage.from('tournament-images').getPublicUrl(fullPath)
+    return data.publicUrl
+  }
+
+  const handleImageChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingImage(true)
+    try {
+      const url = await uploadTournamentImage(file, 'image')
+      update('image_url', url)
+    } catch { toast.error('Failed to upload image') }
+    finally { setUploadingImage(false); e.target.value = '' }
+  }
+
+  const handleBannerChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingBanner(true)
+    try {
+      const url = await uploadTournamentImage(file, 'banner')
+      update('banner_url', url)
+    } catch { toast.error('Failed to upload banner') }
+    finally { setUploadingBanner(false); e.target.value = '' }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -57,6 +93,58 @@ export default function CreateTournament() {
         <div>
           <label className={labelClass}>Tournament Name <span className="text-red-400">*</span></label>
           <input className={inputClass} value={form.name} onChange={e => update('name', e.target.value)} placeholder="Spring Championship 2025" required />
+        </div>
+
+        {/* Banner + Image */}
+        <div className="space-y-3">
+          {/* Banner */}
+          <div>
+            <label className={labelClass}>Tournament Banner</label>
+            <div className="relative h-28 rounded-xl overflow-hidden bg-gradient-to-br from-accent/20 via-surface to-accent/10 cursor-pointer group border border-border" onClick={() => bannerRef.current?.click()}>
+              {form.banner_url
+                ? <img src={form.banner_url} alt="banner" className="w-full h-full object-cover" />
+                : <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                    <Camera size={20} className="text-muted" />
+                    <span className="text-xs text-muted">Click to upload banner</span>
+                  </div>
+              }
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                {uploadingBanner ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Camera size={20} className="text-white" />}
+              </div>
+              {form.banner_url && (
+                <button type="button" onClick={e => { e.stopPropagation(); update('banner_url', '') }}
+                  className="absolute top-2 right-2 p-1 bg-black/60 hover:bg-red-500/80 rounded-full text-white transition-colors z-10">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+            <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={handleBannerChange} />
+          </div>
+
+          {/* Image (thumbnail/logo) */}
+          <div>
+            <label className={labelClass}>Tournament Image <span className="text-muted text-xs">(thumbnail)</span></label>
+            <div className="flex items-center gap-3">
+              <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-surface border border-border cursor-pointer group shrink-0" onClick={() => imageRef.current?.click()}>
+                {form.image_url
+                  ? <img src={form.image_url} alt="thumbnail" className="w-full h-full object-cover" />
+                  : <div className="absolute inset-0 flex items-center justify-center"><Camera size={18} className="text-muted" /></div>
+                }
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  {uploadingImage ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Camera size={16} className="text-white" />}
+                </div>
+              </div>
+              <input ref={imageRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+              <div className="text-xs text-muted">
+                <p>Square image used as the tournament icon in listings.</p>
+                {form.image_url && (
+                  <button type="button" onClick={() => update('image_url', '')} className="mt-1 text-red-400/70 hover:text-red-400 flex items-center gap-1">
+                    <X size={11} /> Remove image
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

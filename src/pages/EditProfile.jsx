@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Camera, Plus, Trash2, Save, ArrowLeft } from 'lucide-react'
+import { Camera, Plus, Trash2, Save, ArrowLeft, X } from 'lucide-react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../lib/supabase'
@@ -160,15 +160,28 @@ export default function EditProfile() {
         <div className="space-y-4">
           <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">Appearance</h2>
           <div className="relative">
-            <div className="h-36 rounded-xl overflow-hidden bg-gradient-to-br from-accent/30 via-surface to-accent2/20 cursor-pointer group" onClick={() => bannerRef.current?.click()}>
+            {/* Banner */}
+            <div className="h-36 rounded-xl overflow-hidden bg-gradient-to-br from-accent/30 via-surface to-accent2/20 cursor-pointer group relative" onClick={() => bannerRef.current?.click()}>
               {form.banner_url && <img src={form.banner_url} alt="banner" className="w-full h-full object-cover" />}
               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 {uploadingBanner ? <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Camera size={24} className="text-white" />}
               </div>
             </div>
             <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={handleBannerChange} />
+            {/* Delete banner button */}
+            {form.banner_url && (
+              <button
+                type="button"
+                onClick={() => update('banner_url', '')}
+                className="absolute top-2 right-2 p-1 bg-black/60 hover:bg-red-500/80 rounded-full text-white transition-colors z-10"
+                title="Remove banner"
+              >
+                <X size={14} />
+              </button>
+            )}
 
-            <div className="absolute -bottom-8 left-4">
+            {/* Avatar */}
+            <div className="absolute -bottom-8 left-4 flex items-end gap-1">
               <div className="relative cursor-pointer group" onClick={() => avatarRef.current?.click()}>
                 <div className="p-0.5 bg-bg rounded-full">
                   <Avatar src={form.avatar_url} name={form.display_name || form.username} size="lg" />
@@ -178,9 +191,20 @@ export default function EditProfile() {
                 </div>
               </div>
               <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+              {/* Delete avatar button */}
+              {form.avatar_url && (
+                <button
+                  type="button"
+                  onClick={() => update('avatar_url', '')}
+                  className="mb-0.5 p-1 bg-surface border border-border hover:border-red-500/50 hover:bg-red-500/10 rounded-full text-muted hover:text-red-400 transition-colors"
+                  title="Remove avatar"
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
           </div>
-          <div className="pt-10 text-xs text-muted">Click on banner or avatar to change them</div>
+          <div className="pt-10 text-xs text-muted">Click on banner or avatar to change · click <X size={10} className="inline" /> to remove</div>
         </div>
 
         {/* Basic Info */}
