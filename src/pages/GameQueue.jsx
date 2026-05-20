@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
-import { LOOKING_FOR_OPTIONS, RANK_COLORS } from '../utils/constants'
+import { RANK_COLORS } from '../utils/constants'
 import { useGamesStore } from '../store/gamesStore'
 import Button from '../components/ui/Button'
 import Avatar from '../components/ui/Avatar'
@@ -40,7 +40,7 @@ function QueueEntryCard({ entry, onMessage, isOwn }) {
           {entry.looking_for && (
             <span className="text-xs text-muted flex items-center gap-1">
               <Users size={11} />
-              {LOOKING_FOR_OPTIONS.find(o => o.value === entry.looking_for)?.label || entry.looking_for}
+              {entry.looking_for}
             </span>
           )}
           {entry.note && <span className="text-xs text-slate-400 italic truncate max-w-xs">"{entry.note}"</span>}
@@ -73,6 +73,7 @@ export default function GameQueue() {
   const [leaving, setLeaving] = useState(false)
   const [joinForm, setJoinForm] = useState({ rank: '', role: '', looking_for: '', note: '' })
   const [filters, setFilters] = useState({ rank: '', role: '', looking_for: '' })
+  const lookingForOptions = game?.looking_for_options || [{ label: 'Any', value: 'any' }]
   const [showFilters, setShowFilters] = useState(false)
 
   useEffect(() => {
@@ -238,19 +239,19 @@ export default function GameQueue() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {game.has_ranks && game.ranks.length > 0 && (
                   <select className={selectClass} value={filters.rank} onChange={e => setFilters(p => ({ ...p, rank: e.target.value }))}>
-                    <option value="">Any rank</option>
+                    <option value="">Any {game.rank_label || 'rank'}</option>
                     {game.ranks.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
                 )}
                 {game.has_roles && game.roles.length > 0 && (
                   <select className={selectClass} value={filters.role} onChange={e => setFilters(p => ({ ...p, role: e.target.value }))}>
-                    <option value="">Any role</option>
+                    <option value="">Any {game.role_label || 'role'}</option>
                     {game.roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
                 )}
                 <select className={selectClass} value={filters.looking_for} onChange={e => setFilters(p => ({ ...p, looking_for: e.target.value }))}>
-                  <option value="">Any group size</option>
-                  {LOOKING_FOR_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  <option value="">Looking for...</option>
+                  {lookingForOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
             </div>
@@ -296,20 +297,20 @@ export default function GameQueue() {
         <div className="space-y-4">
           {game.has_ranks && game.ranks.length > 0 && (
             <div>
-              <label className="text-sm font-medium text-slate-300 block mb-1.5">Your Rank</label>
+              <label className="text-sm font-medium text-slate-300 block mb-1.5">{game.rank_label || 'Rank'}</label>
               <select className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-slate-200 text-sm focus:outline-none focus:border-accent"
                 value={joinForm.rank} onChange={e => setJoinForm(p => ({ ...p, rank: e.target.value }))}>
-                <option value="">Select rank...</option>
+                <option value="">Select {(game.rank_label || 'rank').toLowerCase()}...</option>
                 {game.ranks.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </div>
           )}
           {game.has_roles && game.roles.length > 0 && (
             <div>
-              <label className="text-sm font-medium text-slate-300 block mb-1.5">Your Role</label>
+              <label className="text-sm font-medium text-slate-300 block mb-1.5">{game.role_label || 'Role'}</label>
               <select className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-slate-200 text-sm focus:outline-none focus:border-accent"
                 value={joinForm.role} onChange={e => setJoinForm(p => ({ ...p, role: e.target.value }))}>
-                <option value="">Select role...</option>
+                <option value="">Select {(game.role_label || 'role').toLowerCase()}...</option>
                 {game.roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </div>
@@ -318,8 +319,8 @@ export default function GameQueue() {
             <label className="text-sm font-medium text-slate-300 block mb-1.5">Looking for</label>
             <select className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-slate-200 text-sm focus:outline-none focus:border-accent"
               value={joinForm.looking_for} onChange={e => setJoinForm(p => ({ ...p, looking_for: e.target.value }))}>
-              <option value="">Any</option>
-              {LOOKING_FOR_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              <option value="">Select...</option>
+              {lookingForOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
           <div>
@@ -327,7 +328,7 @@ export default function GameQueue() {
             <input
               className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-slate-200 placeholder-muted text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
               value={joinForm.note} onChange={e => setJoinForm(p => ({ ...p, note: e.target.value }))}
-              placeholder="e.g. Need IGL, competitive only..."
+              placeholder={game.note_placeholder || 'Add a note...'}
               maxLength={100}
             />
           </div>
