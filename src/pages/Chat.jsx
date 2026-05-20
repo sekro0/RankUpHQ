@@ -125,7 +125,7 @@ export default function Chat() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user, profile } = useAuthStore()
-  const { markRead, setActiveConvo } = useUnreadStore()
+  const { markRead, setActiveConvo, lastReadTimestamps } = useUnreadStore()
   const [messages, setMessages] = useState([])
   const [otherUser, setOtherUser] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -153,10 +153,43 @@ export default function Chat() {
 
   const myUsername = profile?.username
 
-  // Messages where the current user is mentioned (by others)
+  // Effective last-read timestamp: Zustand store (current session) OR localStorage (survives F5)
+  const lastReadTs = lastReadTimestamps[id] || (() => {
+    try {
+      const cache = JSON.parse(localStorage.getItem(`ruhq_lr_${user?.id}`) || '{}')
+      return cache[id] || null
+    } catch { return null }
+  })()
+
+  // Only show mention jump for mentions in UNREAD messages (after last read)
   const myMentionIds = messages
-    .filter(m => myUsername && (m.content || '').includes(`@${myUsername}`) && m.sender_id !== user?.id)
+    .filter(m =>
+      myUsername &&
+      (m.content || '').includes(`@${myUsername}`) &&
+      m.sender_id !== user?.id &&
+      (!lastReadTs || m.created_at > lastReadTs)
+    )
     .map(m => m.id)
+
+  // Guaranteed save on F5/browser close — beforeunload fires even when React cleanup doesn't
+  useEffect(() => {
+    const saveOnUnload = () => {
+      const msgs = messagesRef.current
+      const latest = msgs?.[msgs.length - 1]
+      if (!user?.id || !latest?.created_at) return
+      try {
+        const key = `ruhq_lr_${user.id}`
+        const now = new Date(new Date(latest.created_at).getTime() + 1).toISOString()
+        const cache = JSON.parse(localStorage.getItem(key) || '{}')
+        if (!cache[id] || now > cache[id]) {
+          cache[id] = now
+          localStorage.setItem(key, JSON.stringify(cache))
+        }
+      } catch {}
+    }
+    window.addEventListener('beforeunload', saveOnUnload)
+    return () => window.removeEventListener('beforeunload', saveOnUnload)
+  }, [id, user])
 
   useEffect(() => {
     setActiveConvo(id)
