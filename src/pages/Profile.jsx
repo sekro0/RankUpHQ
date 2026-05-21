@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { MessageSquare, Edit, MapPin, Calendar, ExternalLink, Sword, UserPlus, UserMinus, UserCheck, ShieldOff, Check } from 'lucide-react'
+import { MessageSquare, Edit, MapPin, Calendar, Cake, ExternalLink, Sword, UserPlus, UserMinus, UserCheck, ShieldOff, Check, Flag, Trophy, Users } from 'lucide-react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../lib/supabase'
@@ -9,9 +9,19 @@ import Avatar from '../components/ui/Avatar'
 import Badge from '../components/ui/Badge'
 import Button from '../components/ui/Button'
 import Skeleton from '../components/ui/Skeleton'
+import Modal from '../components/ui/Modal'
 import { timeAgo } from '../utils/formatters'
 import { RANK_COLORS } from '../utils/constants'
 import { useGamesStore } from '../store/gamesStore'
+
+const REPORT_REASONS = [
+  'Harassment or hate speech',
+  'Cheating / exploiting',
+  'Spam or self-promotion',
+  'Inappropriate content',
+  'Impersonation',
+  'Other',
+]
 
 const SocialIcon = ({ platform }) => {
   const icons = {
@@ -139,6 +149,13 @@ export default function Profile() {
   const [loading, setLoading] = useState(true)
   const [friendship, setFriendship] = useState(null) // { id, status, isRequester }
   const [friendActioning, setFriendActioning] = useState(false)
+  const [reportModal, setReportModal] = useState(false)
+  const [reportReason, setReportReason] = useState(REPORT_REASONS[0])
+  const [reportDetails, setReportDetails] = useState('')
+  const [submittingReport, setSubmittingReport] = useState(false)
+  const [tournamentHistory, setTournamentHistory] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [mutualFriends, setMutualFriends] = useState(0)
 
   useEffect(() => {
     loadProfile()
@@ -156,15 +173,35 @@ export default function Profile() {
       .eq('user_id', p.id)
     setUserGames(games || [])
 
-    // Load friendship status
+    // Load tournament history
+    setHistoryLoading(true)
+    const { data: history } = await supabase
+      .from('tournament_participants')
+      .select('*, tournament:tournaments(id,name,status,format,image_url,game:games(id,name))')
+      .eq('user_id', p.id)
+      .order('created_at', { ascending: false })
+      .limit(10)
+    setTournamentHistory(history?.filter(h => h.tournament) || [])
+    setHistoryLoading(false)
+
+    // Load friendship status and mutual friends
     if (user && user.id !== p.id) {
-      const { data: f } = await supabase
-        .from('friendships')
-        .select('id, status, requester_id, addressee_id')
-        .or(`and(requester_id.eq.${user.id},addressee_id.eq.${p.id}),and(requester_id.eq.${p.id},addressee_id.eq.${user.id})`)
-        .maybeSingle()
+      const [{ data: f }, { data: myFriends }, { data: theirFriends }] = await Promise.all([
+        supabase.from('friendships').select('id, status, requester_id, addressee_id')
+          .or(`and(requester_id.eq.${user.id},addressee_id.eq.${p.id}),and(requester_id.eq.${p.id},addressee_id.eq.${user.id})`)
+          .maybeSingle(),
+        supabase.from('friendships').select('requester_id, addressee_id')
+          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`).eq('status', 'accepted'),
+        supabase.from('friendships').select('requester_id, addressee_id')
+          .or(`requester_id.eq.${p.id},addressee_id.eq.${p.id}`).eq('status', 'accepted'),
+      ])
       if (f) setFriendship({ id: f.id, status: f.status, isRequester: f.requester_id === user.id })
       else setFriendship(null)
+
+      const myFriendIds = new Set((myFriends || []).map(fr => fr.requester_id === user.id ? fr.addressee_id : fr.requester_id))
+      const theirFriendIds = new Set((theirFriends || []).map(fr => fr.requester_id === p.id ? fr.addressee_id : fr.requester_id))
+      const mutual = [...myFriendIds].filter(id => theirFriendIds.has(id) && id !== user.id && id !== p.id)
+      setMutualFriends(mutual.length)
     }
 
     setLoading(false)
@@ -227,6 +264,24 @@ export default function Profile() {
       toast.success(`You're now friends with ${profile.username}!`)
     } catch { toast.error('Failed') }
     finally { setFriendActioning(false) }
+  }
+
+  const submitReport = async () => {
+    if (!user || !profile) return
+    setSubmittingReport(true)
+    try {
+      await supabase.from('user_reports').insert({
+        reporter_id: user.id,
+        reported_user_id: profile.id,
+        reason: reportReason,
+        details: reportDetails.trim() || null,
+      })
+      setReportModal(false)
+      setReportReason(REPORT_REASONS[0])
+      setReportDetails('')
+      toast.success('Report submitted. Thank you.')
+    } catch { toast.error('Failed to submit report') }
+    finally { setSubmittingReport(false) }
   }
 
   const isOwn = user?.id === profile?.id
@@ -294,6 +349,12 @@ export default function Profile() {
               <Button size="sm" onClick={startConversation}>
                 <MessageSquare size={14} /> Message
               </Button>
+              {user && (
+                <button onClick={() => setReportModal(true)} title="Report user"
+                  className="p-2 text-muted hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors border border-border">
+                  <Flag size={13} />
+                </button>
+              )}
             </>
           )}
         </div>
@@ -311,7 +372,7 @@ export default function Profile() {
         <div className="flex flex-wrap gap-3 text-sm text-muted">
           {profile.age && (
             <span className="flex items-center gap-1.5">
-              <Calendar size={14} /> {profile.age} years old
+              <Cake size={14} /> {profile.age} years old
             </span>
           )}
           {profile.country && (
@@ -322,6 +383,11 @@ export default function Profile() {
           <span className="flex items-center gap-1.5">
             <Calendar size={14} /> Joined {new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
           </span>
+          {!isOwn && mutualFriends > 0 && (
+            <span className="flex items-center gap-1.5 text-accent/80">
+              <Users size={14} /> {mutualFriends} mutual friend{mutualFriends !== 1 ? 's' : ''}
+            </span>
+          )}
         </div>
 
         {/* Social links */}
@@ -378,11 +444,83 @@ export default function Profile() {
           </div>
         )}
 
+        {/* Tournament History */}
+        {(historyLoading || tournamentHistory.length > 0) && (
+          <div className="border-t border-border pt-6">
+            <h2 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
+              <Trophy size={16} className="text-accent" /> Tournament History
+            </h2>
+            {historyLoading ? (
+              <div className="space-y-2">{[1,2].map(i => <div key={i} className="h-14 bg-surface rounded-xl animate-pulse border border-border" />)}</div>
+            ) : (
+              <div className="space-y-2">
+                {tournamentHistory.map(entry => {
+                  const trn = entry.tournament
+                  const STATUS_COLORS = { open: 'success', in_progress: 'warning', completed: 'default', cancelled: 'danger' }
+                  return (
+                    <Link
+                      key={entry.id}
+                      to={`/tournaments/${trn.id}`}
+                      className="flex items-center gap-3 p-3 bg-surface border border-border rounded-xl hover:border-accent/30 transition-colors"
+                    >
+                      {trn.image_url
+                        ? <img src={trn.image_url} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 border border-border" />
+                        : <div className="w-10 h-10 rounded-lg bg-accent/10 border border-border flex items-center justify-center shrink-0"><Trophy size={16} className="text-accent opacity-60" /></div>
+                      }
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{trn.name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          {trn.game && <span className="text-xs text-muted">{trn.game.name}</span>}
+                          <Badge color={STATUS_COLORS[trn.status] || 'default'}>{trn.status}</Badge>
+                        </div>
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Comments */}
         <div className="border-t border-border pt-6">
           <ProfileComments profileId={profile.id} />
         </div>
       </div>
+
+      {/* Report Modal */}
+      <Modal open={reportModal} onClose={() => setReportModal(false)} title="Report User">
+        <div className="space-y-4">
+          <p className="text-sm text-muted">Report <span className="text-white font-semibold">@{profile.username}</span> to our moderation team.</p>
+          <div>
+            <label className="text-xs font-medium text-muted block mb-1.5">Reason</label>
+            <select
+              value={reportReason}
+              onChange={e => setReportReason(e.target.value)}
+              className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-slate-200 text-sm focus:outline-none focus:border-accent"
+            >
+              {REPORT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted block mb-1.5">Details (optional)</label>
+            <textarea
+              value={reportDetails}
+              onChange={e => setReportDetails(e.target.value)}
+              placeholder="Describe what happened..."
+              rows={3}
+              maxLength={500}
+              className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-slate-200 placeholder-muted text-sm focus:outline-none focus:border-accent resize-none"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button variant="danger" loading={submittingReport} onClick={submitReport} className="flex-1">
+              <Flag size={13} /> Submit Report
+            </Button>
+            <Button variant="secondary" onClick={() => setReportModal(false)}>Cancel</Button>
+          </div>
+        </div>
+      </Modal>
     </motion.div>
   )
 }

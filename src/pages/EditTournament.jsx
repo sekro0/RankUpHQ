@@ -25,7 +25,7 @@ export default function EditTournament() {
   const [form, setForm] = useState({
     name: '', game_id: '', format: 'single_elimination', participant_type: 'team',
     max_participants: 8, min_team_size: 1, prize_info: '', rules: '', starts_at: '',
-    description: '', image_url: '', banner_url: ''
+    registration_deadline: '', description: '', image_url: '', banner_url: ''
   })
 
   useEffect(() => { loadTournament() }, [id])
@@ -44,6 +44,7 @@ export default function EditTournament() {
       prize_info: data.prize_info || '',
       rules: data.rules || '',
       starts_at: data.starts_at ? data.starts_at.slice(0, 16) : '',
+      registration_deadline: data.registration_deadline ? data.registration_deadline.slice(0, 16) : '',
       description: data.description || '',
       image_url: data.image_url || '',
       banner_url: data.banner_url || '',
@@ -93,6 +94,7 @@ export default function EditTournament() {
         ...form,
         game_id: form.game_id || null,
         starts_at: form.starts_at || null,
+        registration_deadline: form.registration_deadline || null,
         max_participants: parseInt(form.max_participants),
         min_team_size: form.participant_type === 'team' ? parseInt(form.min_team_size) || 1 : null,
       }
@@ -219,9 +221,15 @@ export default function EditTournament() {
           </div>
         </div>
 
-        <div>
-          <label className={labelClass}>{t('start_datetime')}</label>
-          <input className={inputClass} type="datetime-local" value={form.starts_at} onChange={e => update('starts_at', e.target.value)} />
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>{t('start_datetime')}</label>
+            <input className={inputClass} type="datetime-local" value={form.starts_at} onChange={e => update('starts_at', e.target.value)} />
+          </div>
+          <div>
+            <label className={labelClass}>Registration Deadline</label>
+            <input className={inputClass} type="datetime-local" value={form.registration_deadline} onChange={e => update('registration_deadline', e.target.value)} />
+          </div>
         </div>
 
         <div>

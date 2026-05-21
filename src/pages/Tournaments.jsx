@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Trophy, Users, Calendar } from 'lucide-react'
+import { Plus, Trophy, Users, Calendar, Star } from 'lucide-react'
 import { motion } from 'framer-motion'
 import supabase from '../lib/supabase'
 import { GAMES, GAME_BY_ID } from '../utils/constants'
 import { useT } from '../store/langStore'
+import { useAuthStore } from '../store/authStore'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import { formatDate } from '../utils/formatters'
@@ -25,12 +26,20 @@ const FORMAT_LABELS = {
 export default function Tournaments() {
   const navigate = useNavigate()
   const { t } = useT()
+  const { user } = useAuthStore()
   const [tournaments, setTournaments] = useState([])
   const [loading, setLoading] = useState(true)
   const [gameFilter, setGameFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('open')
+  const [myOnly, setMyOnly] = useState(false)
+  const [myTournamentIds, setMyTournamentIds] = useState(null)
 
   useEffect(() => { loadTournaments() }, [])
+  useEffect(() => {
+    if (!myOnly || myTournamentIds !== null) return
+    supabase.from('tournament_participants').select('tournament_id').eq('user_id', user.id)
+      .then(({ data }) => setMyTournamentIds((data || []).map(d => d.tournament_id)))
+  }, [myOnly])
 
   const loadTournaments = async () => {
     setLoading(true)
@@ -45,6 +54,7 @@ export default function Tournaments() {
   const filtered = tournaments.filter(tournament => {
     if (gameFilter && tournament.game_id !== gameFilter) return false
     if (statusFilter && tournament.status !== statusFilter) return false
+    if (myOnly && myTournamentIds !== null && !myTournamentIds.includes(tournament.id)) return false
     return true
   })
 
@@ -85,6 +95,11 @@ export default function Tournaments() {
             </button>
           ))}
         </div>
+        <button
+          onClick={() => setMyOnly(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-colors ${myOnly ? 'bg-accent/10 border-accent/40 text-accent' : 'border-border text-muted hover:text-white hover:border-border/80'}`}>
+          <Star size={12} /> My Tournaments
+        </button>
       </div>
 
       {loading ? (
@@ -109,7 +124,7 @@ export default function Tournaments() {
                 <Link to={`/tournaments/${tournament.id}`}>
                   <div className="bg-card border border-border rounded-xl overflow-hidden hover:border-accent/40 transition-all duration-200 hover:-translate-y-0.5 cursor-pointer h-full flex flex-col">
                     {/* Banner or gradient */}
-                    <div className="h-20 relative overflow-hidden">
+                    <div className="h-28 relative overflow-hidden">
                       {tournament.banner_url
                         ? <img src={tournament.banner_url} alt="banner" className="w-full h-full object-cover" loading="lazy" />
                         : <div className="w-full h-full bg-gradient-to-br from-accent/15 via-surface to-accent2/10" />

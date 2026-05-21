@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { Target, Gamepad2, MessageSquare, Users, Trophy, Bell, LogOut, User, Settings, Menu, X, Home, Heart, UserPlus, Globe } from 'lucide-react'
+import { Target, Gamepad2, MessageSquare, Users, Trophy, LogOut, User, Settings, Home, Heart, UserPlus, Globe, Search, BarChart2, MoreHorizontal } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../../lib/supabase'
@@ -8,6 +8,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useUnreadStore } from '../../store/unreadStore'
 import { useT } from '../../store/langStore'
 import Avatar from '../ui/Avatar'
+import NotificationPanel from '../NotificationPanel'
 
 const LANG_OPTIONS = [
   { code: 'es', label: 'ES', full: 'Español' },
@@ -22,10 +23,11 @@ export default function Navbar() {
   const navigate = useNavigate()
   const location = useLocation()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [langMenuOpen, setLangMenuOpen] = useState(false)
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
   const menuRef = useRef(null)
   const langRef = useRef(null)
+  const moreRef = useRef(null)
 
   const navLinks = [
     { to: '/dashboard', icon: Home, label: t('home') },
@@ -34,6 +36,7 @@ export default function Navbar() {
     { to: '/friends', icon: UserPlus, label: t('friends'), badge: friendRequests },
     { to: '/teams', icon: Users, label: t('teams'), badge: teamJoinRequests },
     { to: '/tournaments', icon: Trophy, label: t('tournaments') },
+    { to: '/leaderboard', icon: BarChart2, label: t('leaderboard') },
     { to: '/messages', icon: MessageSquare, label: t('messages'), badge: total },
   ]
 
@@ -41,6 +44,7 @@ export default function Navbar() {
     const handler = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) setUserMenuOpen(false)
       if (langRef.current && !langRef.current.contains(e.target)) setLangMenuOpen(false)
+      if (moreRef.current && !moreRef.current.contains(e.target)) setMoreMenuOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -69,11 +73,12 @@ export default function Navbar() {
           <div className="hidden md:flex items-center gap-0.5 flex-1">
             {navLinks.map(({ to, icon: Icon, label, badge }) => {
               const active = location.pathname.startsWith(to)
+              const isMoreLink = to === '/tournaments' || to === '/leaderboard'
               return (
                 <Link
                   key={to}
                   to={to}
-                  className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors ${active ? 'text-white bg-surface' : 'text-muted hover:text-slate-300 hover:bg-surface/60'}`}
+                  className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors ${isMoreLink ? 'hidden lg:flex' : ''} ${active ? 'text-white bg-surface' : 'text-muted hover:text-slate-300 hover:bg-surface/60'}`}
                 >
                   <Icon size={14} />
                   {label}
@@ -85,6 +90,37 @@ export default function Navbar() {
                 </Link>
               )
             })}
+            {/* More dropdown (md only, hides at lg) */}
+            <div className="relative lg:hidden" ref={moreRef}>
+              <button
+                onClick={() => setMoreMenuOpen(!moreMenuOpen)}
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                  (location.pathname.startsWith('/tournaments') || location.pathname.startsWith('/leaderboard')) ? 'text-white bg-surface' : 'text-muted hover:text-slate-300 hover:bg-surface/60'
+                }`}
+              >
+                <MoreHorizontal size={14} /> More
+              </button>
+              <AnimatePresence>
+                {moreMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.12 }}
+                    className="absolute left-0 top-full mt-1.5 w-40 bg-card border border-border rounded-lg shadow-xl overflow-hidden z-50"
+                  >
+                    {[{ to: '/tournaments', icon: Trophy, label: t('tournaments') }, { to: '/leaderboard', icon: BarChart2, label: t('leaderboard') }].map(({ to, icon: Icon, label }) => (
+                      <Link
+                        key={to}
+                        to={to}
+                        onClick={() => setMoreMenuOpen(false)}
+                        className={`flex items-center gap-2 px-3 py-2.5 text-xs font-medium transition-colors ${location.pathname.startsWith(to) ? 'text-accent bg-accent/10' : 'text-slate-400 hover:text-white hover:bg-surface'}`}
+                      >
+                        <Icon size={13} /> {label}
+                      </Link>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         )}
 
@@ -123,6 +159,10 @@ export default function Navbar() {
 
           {user ? (
             <>
+              <NotificationPanel />
+              <Link to="/search" className="p-1.5 text-muted hover:text-white hover:bg-surface rounded transition-colors">
+                <Search size={15} />
+              </Link>
               <div className="relative" ref={menuRef}>
                 <button onClick={() => setUserMenuOpen(!userMenuOpen)} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface transition-colors">
                   <Avatar src={profile?.avatar_url} name={profile?.username || profile?.display_name} size="sm" />
@@ -146,6 +186,9 @@ export default function Navbar() {
                         <Link to="/profile/edit" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-400 hover:text-white hover:bg-surface rounded transition-colors">
                           <Settings size={13} /> {t('edit_profile')}
                         </Link>
+                        <Link to="/settings" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-slate-400 hover:text-white hover:bg-surface rounded transition-colors">
+                          <Settings size={13} /> {t('settings')}
+                        </Link>
                         <button onClick={handleSignOut} className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-red-400/80 hover:text-red-400 hover:bg-surface rounded transition-colors">
                           <LogOut size={13} /> {t('sign_out')}
                         </button>
@@ -154,9 +197,6 @@ export default function Navbar() {
                   )}
                 </AnimatePresence>
               </div>
-              <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden p-1.5 text-muted hover:text-white rounded transition-colors">
-                {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-              </button>
             </>
           ) : (
             <div className="flex items-center gap-2">
@@ -167,31 +207,6 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile menu */}
-      <AnimatePresence>
-        {mobileMenuOpen && user && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-            className="md:hidden border-t border-border bg-card"
-          >
-            <div className="p-2">
-              {navLinks.map(({ to, icon: Icon, label, badge }) => (
-                <Link key={to} to={to} onClick={() => setMobileMenuOpen(false)}
-                  className={`relative flex items-center gap-3 px-3 py-2.5 rounded text-sm font-medium transition-colors ${location.pathname.startsWith(to) ? 'text-white bg-surface' : 'text-muted hover:text-white hover:bg-surface'}`}
-                >
-                  <Icon size={16} />
-                  {label}
-                  {badge > 0 && (
-                    <span className="ml-auto min-w-[18px] h-[18px] bg-accent text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                      {badge > 99 ? '99+' : badge}
-                    </span>
-                  )}
-                </Link>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </nav>
   )
 }

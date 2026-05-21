@@ -3,11 +3,13 @@ import supabase from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 import { useGamesStore } from '../store/gamesStore'
 import { useUnreadStore } from '../store/unreadStore'
+import { usePresenceStore } from '../store/presenceStore'
 
 export default function AuthProvider({ children }) {
   const { setSession, setUser, setProfile, setLoading, clear } = useAuthStore()
   const loadGames = useGamesStore(s => s.loadGames)
-  const { loadCounts, subscribe, unsubscribe, reset, loadFriendRequests, subscribeFriendRequests, loadTeamJoinRequests, subscribeTeamRequests } = useUnreadStore()
+  const { loadCounts, subscribe, unsubscribe, reset, loadFriendRequests, subscribeFriendRequests, loadTeamJoinRequests, subscribeTeamRequests, loadTeamInvites, subscribeTeamInvites } = useUnreadStore()
+  const { join: joinPresence, leave: leavePresence } = usePresenceStore()
 
   const fetchProfile = async (userId) => {
     try {
@@ -30,6 +32,9 @@ export default function AuthProvider({ children }) {
         subscribeFriendRequests(session.user.id)
         loadTeamJoinRequests(session.user.id)
         subscribeTeamRequests(session.user.id)
+        loadTeamInvites(session.user.id)
+        subscribeTeamInvites(session.user.id)
+        joinPresence(session.user.id)
       }
       setLoading(false)
     })
@@ -45,11 +50,15 @@ export default function AuthProvider({ children }) {
         subscribeFriendRequests(session.user.id)
         loadTeamJoinRequests(session.user.id)
         subscribeTeamRequests(session.user.id)
+        loadTeamInvites(session.user.id)
+        subscribeTeamInvites(session.user.id)
+        joinPresence(session.user.id)
       }
       if (event === 'SIGNED_OUT') {
         clear()
         unsubscribe()
         reset()
+        leavePresence()
       }
     })
 

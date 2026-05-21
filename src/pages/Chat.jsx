@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Send, Trash2, Users, ImageIcon, BarChart2, X, Plus, Minus, Search, AtSign, Maximize2 } from 'lucide-react'
+import { ArrowLeft, Send, Trash2, Users, ImageIcon, BarChart2, X, Plus, Minus, Search, AtSign, Maximize2, Check, CheckCheck } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import supabase from '../lib/supabase'
@@ -121,6 +121,8 @@ function MessageContent({ msg, currentUserId, groupMembers, onVote, onLightbox }
   )
 }
 
+const PAGE_SIZE = 40
+
 export default function Chat() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -131,6 +133,10 @@ export default function Chat() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [groupInfo, setGroupInfo] = useState(null)
   const [groupMembers, setGroupMembers] = useState([])
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [oldestCursor, setOldestCursor] = useState(null)
+  const [otherReadAt, setOtherReadAt] = useState(null)
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
@@ -143,11 +149,14 @@ export default function Chat() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [mentionNavIdx, setMentionNavIdx] = useState(0)
+  const [typingUsers, setTypingUsers] = useState([])
   const bottomRef = useRef()
   const inputRef = useRef()
   const imageInputRef = useRef()
   const messagesRef = useRef([])
   const messageElRefs = useRef({})
+  const typingTimeoutRef = useRef(null)
+  const typingChannelRef = useRef(null)
 
   useEffect(() => { messagesRef.current = messages }, [messages])
 
@@ -209,6 +218,14 @@ export default function Chat() {
     const channel = supabase
       .channel(`chat-${id}`)
       .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'conversation_participants', filter: `conversation_id=eq.${id}` },
+        (payload) => {
+          if (payload.new?.user_id !== user?.id) {
+            setOtherReadAt(payload.new?.last_read_at || null)
+          }
+        }
+      )
+      .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${id}` },
         async (payload) => {
           const { data } = await supabase
@@ -223,9 +240,32 @@ export default function Chat() {
             if (user && data.sender_id !== user.id) markRead(id, user.id, data.created_at)
           }
         }
-      ).subscribe()
+      )
+      .on('postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${id}` },
+        (payload) => {
+          setMessages(prev => prev.filter(m => m.id !== payload.old.id))
+        }
+      )
+      .subscribe()
 
-    return () => supabase.removeChannel(channel)
+    // Typing indicator broadcast channel
+    const typingCh = supabase.channel(`typing-${id}`)
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (payload.userId === user?.id) return
+        setTypingUsers(prev => {
+          if (prev.includes(payload.username)) return prev
+          return [...prev, payload.username]
+        })
+        setTimeout(() => setTypingUsers(prev => prev.filter(u => u !== payload.username)), 3000)
+      })
+      .subscribe()
+    typingChannelRef.current = typingCh
+
+    return () => {
+      supabase.removeChannel(channel)
+      supabase.removeChannel(typingCh)
+    }
   }, [id])
 
   useEffect(() => {
@@ -270,16 +310,30 @@ export default function Chat() {
         setOtherUser(other?.profile)
         setGroupInfo(null)
         setGroupMembers([])
+        // Load other participant's last_read_at for read receipts
+        if (other?.profile?.id) {
+          const { data: otherPart } = await supabase
+            .from('conversation_participants')
+            .select('last_read_at')
+            .eq('conversation_id', id)
+            .eq('user_id', other.profile.id)
+            .single()
+          setOtherReadAt(otherPart?.last_read_at || null)
+        }
       }
 
       const { data: msgs } = await supabase
         .from('messages')
         .select('*, sender:profiles!sender_id(id,username,avatar_url)')
         .eq('conversation_id', id)
-        .order('created_at', { ascending: true })
-        .limit(100)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE + 1)
 
-      const msgsData = msgs || []
+      const fetchedCount = (msgs || []).length
+      const hasMoreMsgs = fetchedCount > PAGE_SIZE
+      const msgsData = hasMoreMsgs ? (msgs || []).slice(0, PAGE_SIZE).reverse() : (msgs || []).reverse()
+      setHasMore(hasMoreMsgs)
+      if (msgsData.length > 0) setOldestCursor(msgsData[0].created_at)
       const pollIds = msgsData.filter(m => m.type === 'poll').map(m => m.id)
       let votesMap = {}
       if (pollIds.length > 0) {
@@ -305,14 +359,81 @@ export default function Chat() {
     }
   }
 
+  const messagesContainerRef = useRef(null)
+
+  const loadMoreMessages = async () => {
+    if (!oldestCursor || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const container = messagesContainerRef.current
+      const prevScrollHeight = container?.scrollHeight || 0
+
+      const { data: older } = await supabase
+        .from('messages')
+        .select('*, sender:profiles!sender_id(id,username,avatar_url)')
+        .eq('conversation_id', id)
+        .lt('created_at', oldestCursor)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE + 1)
+
+      const fetchedCount = (older || []).length
+      const hasMoreOlder = fetchedCount > PAGE_SIZE
+      const olderMsgs = hasMoreOlder ? (older || []).slice(0, PAGE_SIZE).reverse() : (older || []).reverse()
+
+      const pollIds = olderMsgs.filter(m => m.type === 'poll').map(m => m.id)
+      let votesMap = {}
+      if (pollIds.length > 0) {
+        const { data: votes } = await supabase.from('poll_votes')
+          .select('message_id, user_id, option_index').in('message_id', pollIds)
+        for (const v of (votes || [])) {
+          if (!votesMap[v.message_id]) votesMap[v.message_id] = []
+          votesMap[v.message_id].push(v)
+        }
+      }
+      const enrichedOlder = olderMsgs.map(m => ({ ...m, votes: votesMap[m.id] || [] }))
+
+      setHasMore(hasMoreOlder)
+      if (enrichedOlder.length > 0) setOldestCursor(enrichedOlder[0].created_at)
+      setMessages(prev => [...enrichedOlder, ...prev])
+
+      // Preserve scroll position
+      requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop = container.scrollHeight - prevScrollHeight
+        }
+      })
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
   const handleTextChange = (e) => {
     const val = e.target.value
     setText(val)
+
+    // Emit typing event (debounced)
+    if (typingChannelRef.current && profile?.username) {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+      typingChannelRef.current.send({ type: 'broadcast', event: 'typing', payload: { userId: user.id, username: profile.username } })
+      typingTimeoutRef.current = setTimeout(() => {}, 2500)
+    }
+
     if (!groupInfo) { setMentionQuery(null); return }
     const cursor = e.target.selectionStart
     const beforeCursor = val.slice(0, cursor)
     const match = beforeCursor.match(/@(\w*)$/)
     setMentionQuery(match ? match[1] : null)
+  }
+
+  const deleteMessage = async (msgId) => {
+    try {
+      await supabase.from('messages').delete().eq('id', msgId).eq('sender_id', user.id)
+      setMessages(prev => prev.filter(m => m.id !== msgId))
+    } catch {
+      toast.error('Failed to delete message')
+    }
   }
 
   const insertMention = (username) => {
@@ -573,7 +694,21 @@ export default function Chat() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 relative">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4 relative">
+
+        {/* Load earlier messages */}
+        {hasMore && !loading && (
+          <div className="flex justify-center pt-1 pb-2">
+            <button
+              onClick={loadMoreMessages}
+              disabled={loadingMore}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-white bg-surface border border-border rounded-full transition-colors disabled:opacity-50"
+            >
+              {loadingMore ? <div className="w-3 h-3 border border-border border-t-accent rounded-full animate-spin" /> : null}
+              {loadingMore ? 'Loading...' : 'Load earlier messages'}
+            </button>
+          </div>
+        )}
 
         {/* Mention jump banner */}
         <AnimatePresence>
@@ -681,9 +816,23 @@ export default function Chat() {
                             />
                           )}
                         </div>
-                        <span className="text-xs text-muted mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {timeAgo(msg.created_at)}
-                        </span>
+                        <div className="flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="text-xs text-muted">{timeAgo(msg.created_at)}</span>
+                          {isOwn && !groupInfo && (
+                            otherReadAt && msg.created_at <= otherReadAt
+                              ? <CheckCheck size={12} className="text-accent shrink-0" />
+                              : <Check size={12} className="text-muted shrink-0" />
+                          )}
+                          {isOwn && msg.type !== 'image' && (
+                            <button
+                              onClick={() => deleteMessage(msg.id)}
+                              className="p-0.5 text-muted hover:text-red-400 transition-colors"
+                              title="Delete message"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </motion.div>
                   )
@@ -816,6 +965,21 @@ export default function Chat() {
                 </div>
               </button>
             ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Typing indicator */}
+      <AnimatePresence>
+        {typingUsers.length > 0 && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+            className="px-4 py-1.5 flex items-center gap-2">
+            <div className="flex gap-0.5">
+              {[0,1,2].map(i => <div key={i} className="w-1.5 h-1.5 bg-muted rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />)}
+            </div>
+            <span className="text-xs text-muted">
+              {typingUsers.slice(0, 2).join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing...
+            </span>
           </motion.div>
         )}
       </AnimatePresence>

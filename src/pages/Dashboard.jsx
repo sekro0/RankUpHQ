@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Gamepad2, MessageSquare, Users, Trophy, Zap, ArrowRight, Bell } from 'lucide-react'
+import { Gamepad2, MessageSquare, Users, Trophy, Zap, ArrowRight, Bell, UserPlus } from 'lucide-react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../lib/supabase'
@@ -21,8 +21,9 @@ export default function Dashboard() {
   const [upcomingTournaments, setUpcomingTournaments] = useState([])
   const [pendingInvites, setPendingInvites] = useState([])
   const [myTeams, setMyTeams] = useState([])
-  const [stats, setStats] = useState({ queues: 0, messages: 0, teams: 0, tournaments: 0 })
+  const [stats, setStats] = useState({ queues: 0, messages: 0, teams: 0, tournaments: 0, friends: 0 })
   const [loading, setLoading] = useState(true)
+  const [quickJoinGames, setQuickJoinGames] = useState([])
 
   useEffect(() => {
     if (user) loadDashboard()
@@ -31,17 +32,25 @@ export default function Dashboard() {
   const loadDashboard = async () => {
     setLoading(true)
     try {
-      const [queuesRes, convosRes, tourneysRes, invitesRes, teamsRes] = await Promise.all([
+      const [queuesRes, convosRes, tourneysRes, invitesRes, teamsRes, friendsRes, userGamesRes] = await Promise.all([
         supabase.from('queue_entries').select('*, game:games(id,name,slug)').eq('user_id', user.id).eq('status', 'waiting'),
         supabase.from('conversation_participants').select('conversation_id').eq('user_id', user.id),
         supabase.from('tournament_participants').select('tournament:tournaments(id,name,status,starts_at,game:games(name))').eq('user_id', user.id),
         supabase.from('team_invites').select('*, team:teams(id,name,tag), inviter:profiles!inviter_id(username,avatar_url)').eq('invitee_id', user.id).eq('status', 'pending'),
         supabase.from('team_members').select('*, team:teams(id,name,tag,logo_url,game:games(name))').eq('user_id', user.id),
+        supabase.from('friendships').select('id', { count: 'exact', head: true }).or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`).eq('status', 'accepted'),
+        supabase.from('user_games').select('game_id, is_main').eq('user_id', user.id),
       ])
 
       setActiveQueues(queuesRes.data || [])
       setMyTeams(teamsRes.data || [])
       setPendingInvites(invitesRes.data || [])
+
+      // Build personalized Quick Join games list
+      const userGameIds = new Set((userGamesRes.data || []).map(ug => ug.game_id))
+      const myGames = GAMES.filter(g => userGameIds.has(g.id))
+      const otherGames = GAMES.filter(g => !userGameIds.has(g.id))
+      setQuickJoinGames([...myGames, ...otherGames].slice(0, 5))
 
       const upcoming = (tourneysRes.data || [])
         .map(tp => tp.tournament)
@@ -70,6 +79,7 @@ export default function Dashboard() {
         messages: (convosRes.data || []).length,
         teams: (teamsRes.data || []).length,
         tournaments: (tourneysRes.data || []).length,
+        friends: friendsRes.count || 0,
       })
     } catch (err) { console.error(err) }
     finally { setLoading(false) }
@@ -99,6 +109,17 @@ export default function Dashboard() {
   const hour = new Date().getHours()
   const greeting = hour < 12 ? t('good_morning') : hour < 18 ? t('good_afternoon') : t('good_evening')
 
+  const completionItems = [
+    { label: 'Avatar', done: !!profile?.avatar_url, path: '/profile/edit' },
+    { label: 'Display name', done: !!profile?.display_name, path: '/profile/edit' },
+    { label: 'Bio', done: !!profile?.bio, path: '/profile/edit' },
+    { label: 'Country', done: !!profile?.country, path: '/profile/edit' },
+    { label: 'Game added', done: stats.teams > 0 || activeQueues.length > 0 || stats.tournaments > 0, path: '/games' },
+    { label: 'Social (team or friend)', done: stats.teams > 0 || stats.friends > 0, path: '/teams' },
+  ]
+  const completionPct = Math.round((completionItems.filter(i => i.done).length / completionItems.length) * 100)
+  const firstMissing = completionItems.find(i => !i.done)
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       {/* Header */}
@@ -116,6 +137,7 @@ export default function Dashboard() {
             {[
               { icon: Zap, value: stats.queues, label: t('queues'), color: 'text-accent' },
               { icon: MessageSquare, value: stats.messages, label: t('chats'), color: 'text-slate-400' },
+              { icon: UserPlus, value: stats.friends, label: t('friends'), color: 'text-cyan-400' },
               { icon: Users, value: stats.teams, label: t('teams'), color: 'text-emerald-400' },
               { icon: Trophy, value: stats.tournaments, label: t('events'), color: 'text-yellow-400' },
             ].map(({ icon: Icon, value, label, color }) => (
@@ -130,6 +152,25 @@ export default function Dashboard() {
           </div>
         )}
       </motion.div>
+
+      {/* Profile completion */}
+      {!loading && completionPct < 100 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 bg-card border border-accent/20 rounded-xl">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-semibold text-white">Complete your profile</p>
+            <span className="text-xs font-bold text-accent">{completionPct}%</span>
+          </div>
+          <div className="h-1.5 bg-surface rounded-full overflow-hidden mb-2">
+            <div className="h-full bg-accent rounded-full transition-all duration-500" style={{ width: `${completionPct}%` }} />
+          </div>
+          {firstMissing && (
+            <Link to={firstMissing.path} className="text-xs text-accent hover:underline">
+              Next: Add {firstMissing.label} →
+            </Link>
+          )}
+        </motion.div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column */}
@@ -254,7 +295,7 @@ export default function Dashboard() {
               <span className="text-xs font-semibold uppercase tracking-widest text-muted">{t('quick_join')}</span>
             </div>
             <div className="divide-y divide-border">
-              {GAMES.slice(0, 5).map(game => (
+              {(quickJoinGames.length > 0 ? quickJoinGames : GAMES.slice(0, 5)).map(game => (
                 <Link key={game.id} to={`/games/${game.slug}/queue`}
                   className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-surface transition-colors group">
                   <div className="w-7 h-7 rounded overflow-hidden shrink-0 bg-surface border border-border/50">

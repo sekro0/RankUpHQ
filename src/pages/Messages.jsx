@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MessageSquare, Search, Trash2, Users, Plus, Check, X } from 'lucide-react'
+import { MessageSquare, Search, Trash2, Users, Plus, Check, X, BellOff, Bell, Archive, ArchiveRestore } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../lib/supabase'
@@ -29,6 +29,29 @@ export default function Messages() {
   const [creatingGroup, setCreatingGroup] = useState(false)
   const [searchingFriends, setSearchingFriends] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [showArchived, setShowArchived] = useState(false)
+
+  const getMeta = () => {
+    try { return JSON.parse(localStorage.getItem(`conv_meta_${user?.id}`) || '{}') } catch { return {} }
+  }
+  const saveMeta = (meta) => localStorage.setItem(`conv_meta_${user?.id}`, JSON.stringify(meta))
+
+  const toggleMute = (e, convoId) => {
+    e.stopPropagation()
+    const meta = getMeta()
+    meta[convoId] = { ...meta[convoId], muted: !meta[convoId]?.muted }
+    saveMeta(meta)
+    setConversations(prev => prev.map(c => c.id === convoId ? { ...c, muted: !c.muted } : c))
+    toast(meta[convoId].muted ? 'Conversation muted' : 'Conversation unmuted', { duration: 2000 })
+  }
+
+  const toggleArchive = (e, convoId) => {
+    e.stopPropagation()
+    const meta = getMeta()
+    meta[convoId] = { ...meta[convoId], archived: !meta[convoId]?.archived }
+    saveMeta(meta)
+    setConversations(prev => prev.map(c => c.id === convoId ? { ...c, archived: !c.archived } : c))
+  }
 
   useEffect(() => {
     if (!user) return
@@ -80,50 +103,43 @@ export default function Messages() {
 
       const metaMap = Object.fromEntries((convoMeta || []).map(c => [c.id, c]))
 
-      const results = []
-      for (const convoId of convoIds) {
-        const meta = metaMap[convoId] || {}
+      const groupIds = convoIds.filter(id => metaMap[id]?.is_group)
+      const dmIds = convoIds.filter(id => !metaMap[id]?.is_group)
 
-        // Last message (same for DM and group)
-        const { data: lastMsg } = await supabase
-          .from('messages')
-          .select('content, created_at, sender_id')
-          .eq('conversation_id', convoId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
+      // Batch: last messages in parallel, DM participants in one .in() query
+      const [lastMsgResults, dmParticipantsRes, ...groupCountResults] = await Promise.all([
+        Promise.all(convoIds.map(id =>
+          supabase.from('messages').select('content, created_at, sender_id')
+            .eq('conversation_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+            .then(r => ({ id, data: r.data }))
+        )),
+        dmIds.length > 0
+          ? supabase.from('conversation_participants')
+              .select('conversation_id, profile:profiles!user_id(id, username, avatar_url, display_name)')
+              .in('conversation_id', dmIds).neq('user_id', user.id)
+          : Promise.resolve({ data: [] }),
+        ...groupIds.map(id =>
+          supabase.from('conversation_participants')
+            .select('user_id', { count: 'exact', head: true }).eq('conversation_id', id)
+            .then(r => ({ id, count: r.count || 0 }))
+        )
+      ])
 
-        if (meta.is_group) {
-          // For group: use conversation name, get participant count
-          const { count } = await supabase
-            .from('conversation_participants')
-            .select('user_id', { count: 'exact', head: true })
-            .eq('conversation_id', convoId)
-
-          results.push({
-            id: convoId,
-            isGroup: true,
-            name: meta.name || 'Group Chat',
-            memberCount: count || 0,
-            lastMessage: lastMsg,
-          })
-        } else {
-          // DM: get other participant
-          const { data: other } = await supabase
-            .from('conversation_participants')
-            .select('user_id, profile:profiles!user_id(id, username, avatar_url, display_name)')
-            .eq('conversation_id', convoId)
-            .neq('user_id', user.id)
-            .single()
-
-          results.push({
-            id: convoId,
-            isGroup: false,
-            other: other?.profile,
-            lastMessage: lastMsg,
-          })
-        }
+      const lastMsgMap = Object.fromEntries(lastMsgResults.map(r => [r.id, r.data]))
+      const dmOtherMap = {}
+      for (const row of (dmParticipantsRes.data || [])) {
+        dmOtherMap[row.conversation_id] = row.profile
       }
+      const groupCountMap = Object.fromEntries(groupCountResults.map(r => [r.id, r.count]))
+
+      const results = convoIds.map(id => {
+        const meta = metaMap[id] || {}
+        const lastMsg = lastMsgMap[id]
+        if (meta.is_group) {
+          return { id, isGroup: true, name: meta.name || 'Group Chat', memberCount: groupCountMap[id] || 0, lastMessage: lastMsg }
+        }
+        return { id, isGroup: false, other: dmOtherMap[id], lastMessage: lastMsg }
+      })
 
       results.sort((a, b) => {
         const ta = a.lastMessage?.created_at ? new Date(a.lastMessage.created_at) : new Date(0)
@@ -131,7 +147,13 @@ export default function Messages() {
         return tb - ta
       })
 
-      setConversations(results)
+      const meta = getMeta()
+      const enriched = results.map(c => ({
+        ...c,
+        muted: !!meta[c.id]?.muted,
+        archived: !!meta[c.id]?.archived,
+      }))
+      setConversations(enriched)
     } catch (err) {
       console.error(err)
     } finally {
@@ -207,19 +229,29 @@ export default function Messages() {
   }
 
   const filtered = conversations.filter(c => {
+    if (c.archived !== showArchived) return false
     if (!search) return true
     const name = c.isGroup ? c.name : (c.other?.username || c.other?.display_name || '')
     return name.toLowerCase().includes(search.toLowerCase())
   })
+  const archivedCount = conversations.filter(c => c.archived).length
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-black text-white">Messages</h1>
-          <Button size="sm" variant="secondary" onClick={() => setGroupModal(true)}>
-            <Plus size={14} /> New Group
-          </Button>
+          <div className="flex gap-2">
+            {archivedCount > 0 && (
+              <button onClick={() => setShowArchived(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${showArchived ? 'bg-accent/10 border-accent/40 text-accent' : 'border-border text-muted hover:text-white'}`}>
+                <Archive size={12} /> {showArchived ? 'Back' : `Archived (${archivedCount})`}
+              </button>
+            )}
+            <Button size="sm" variant="secondary" onClick={() => setGroupModal(true)}>
+              <Plus size={14} /> New Group
+            </Button>
+          </div>
         </div>
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
@@ -292,13 +324,24 @@ export default function Messages() {
                   </p>
                 </div>
               </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(convo.id) }}
-                className="shrink-0 p-2 text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                title="Delete conversation"
-              >
-                <Trash2 size={15} />
-              </button>
+              <div className="shrink-0 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={e => toggleMute(e, convo.id)}
+                  className={`p-2 rounded-lg transition-colors ${convo.muted ? 'text-accent bg-accent/10' : 'text-muted hover:text-white hover:bg-surface'}`}
+                  title={convo.muted ? 'Unmute' : 'Mute'}>
+                  {convo.muted ? <BellOff size={14} /> : <Bell size={14} />}
+                </button>
+                <button onClick={e => toggleArchive(e, convo.id)}
+                  className="p-2 text-muted hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"
+                  title={convo.archived ? 'Unarchive' : 'Archive'}>
+                  {convo.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(convo.id) }}
+                  className="p-2 text-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                  title="Delete conversation">
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </motion.div>
           ))}
         </div>

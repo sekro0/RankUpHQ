@@ -12,6 +12,8 @@ export const useUnreadStore = create((set, get) => ({
   friendRequests: 0,
   teamJoinRequests: 0,
   teamJoinRequestsChannel: null,
+  teamInvitesChannel: null,
+  teamInvites: 0,
 
   loadCounts: async (userId) => {
     // Read localStorage cache — survives F5 race conditions
@@ -157,6 +159,44 @@ export const useUnreadStore = create((set, get) => ({
   clearTeamJoinRequest: () => set(s => ({ teamJoinRequests: Math.max(0, s.teamJoinRequests - 1) })),
   clearAllTeamJoinRequests: () => set({ teamJoinRequests: 0 }),
 
+  loadTeamInvites: async (userId) => {
+    const { count } = await supabase
+      .from('team_invites')
+      .select('id', { count: 'exact', head: true })
+      .eq('invitee_id', userId)
+      .eq('status', 'pending')
+    set({ teamInvites: count || 0 })
+  },
+
+  subscribeTeamInvites: (userId) => {
+    const old = get().teamInvitesChannel
+    if (old) supabase.removeChannel(old)
+
+    const ch = supabase
+      .channel('team-invites-global')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'team_invites', filter: `invitee_id=eq.${userId}` },
+        async (payload) => {
+          if (payload.new.status !== 'pending') return
+          set(s => ({ teamInvites: s.teamInvites + 1 }))
+          const [{ data: inviter }, { data: team }] = await Promise.all([
+            supabase.from('profiles').select('username, display_name').eq('id', payload.new.inviter_id).single(),
+            supabase.from('teams').select('name').eq('id', payload.new.team_id).single(),
+          ])
+          const name = inviter?.display_name || inviter?.username || 'Someone'
+          const teamName = team?.name || 'a team'
+          toast(`🎮 ${name} invited you to ${teamName}!`, {
+            duration: 6000,
+            style: { background: '#13131a', color: '#e2e8f0', border: '1px solid #2a2a3e' }
+          })
+        }
+      )
+      .subscribe()
+    set({ teamInvitesChannel: ch })
+  },
+
+  clearTeamInvite: () => set(s => ({ teamInvites: Math.max(0, s.teamInvites - 1) })),
+
   subscribeFriendRequests: (userId) => {
     const old = get().friendRequestsChannel
     if (old) supabase.removeChannel(old)
@@ -227,11 +267,12 @@ export const useUnreadStore = create((set, get) => ({
   },
 
   unsubscribe: () => {
-    const { channel, friendRequestsChannel, teamJoinRequestsChannel } = get()
+    const { channel, friendRequestsChannel, teamJoinRequestsChannel, teamInvitesChannel } = get()
     if (channel) { supabase.removeChannel(channel); set({ channel: null }) }
     if (friendRequestsChannel) { supabase.removeChannel(friendRequestsChannel); set({ friendRequestsChannel: null }) }
     if (teamJoinRequestsChannel) { supabase.removeChannel(teamJoinRequestsChannel); set({ teamJoinRequestsChannel: null }) }
+    if (teamInvitesChannel) { supabase.removeChannel(teamInvitesChannel); set({ teamInvitesChannel: null }) }
   },
 
-  reset: () => set({ counts: {}, total: 0, activeConvoId: null, friendRequests: 0, lastReadTimestamps: {}, teamJoinRequests: 0 })
+  reset: () => set({ counts: {}, total: 0, activeConvoId: null, friendRequests: 0, lastReadTimestamps: {}, teamJoinRequests: 0, teamInvites: 0 })
 }))

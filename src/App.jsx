@@ -41,6 +41,10 @@ const EditTournament = lazy(() => import('./pages/EditTournament'))
 const Discover = lazy(() => import('./pages/Discover'))
 const Onboarding = lazy(() => import('./pages/Onboarding'))
 const Friends = lazy(() => import('./pages/Friends'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Leaderboard = lazy(() => import('./pages/Leaderboard'))
+const Search = lazy(() => import('./pages/Search'))
+const Notifications = lazy(() => import('./pages/Notifications'))
 
 const PageLoader = () => (
   <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
@@ -79,6 +83,10 @@ export default function App() {
         <Route path="/discover" element={<Protect><Discover /></Protect>} />
         <Route path="/friends" element={<Protect><Friends /></Protect>} />
         <Route path="/onboarding" element={<Protect><Onboarding /></Protect>} />
+        <Route path="/settings" element={<Protect><Settings /></Protect>} />
+        <Route path="/leaderboard" element={<Protect><Leaderboard /></Protect>} />
+        <Route path="/search" element={<Protect><Search /></Protect>} />
+        <Route path="/notifications" element={<Protect><Notifications /></Protect>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

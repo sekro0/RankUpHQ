@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Trophy, Users, Calendar, CheckCircle, Play, Award, XCircle, LogOut, Pencil } from 'lucide-react'
+import { ArrowLeft, Trophy, Users, Calendar, CheckCircle, Play, Award, XCircle, LogOut, Pencil, Link2 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../lib/supabase'
@@ -60,6 +60,59 @@ function BracketView({ matches, participants, t }) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function RoundRobinStandings({ matches, participants }) {
+  const standings = participants.map(p => {
+    const myMatches = matches.filter(m => m.status === 'completed' && (m.participant_a_id === p.id || m.participant_b_id === p.id))
+    const wins = myMatches.filter(m => m.winner_id === p.id).length
+    const losses = myMatches.filter(m => m.winner_id && m.winner_id !== p.id).length
+    const played = myMatches.length
+    const gf = myMatches.reduce((acc, m) => acc + (m.participant_a_id === p.id ? (m.score_a || 0) : (m.score_b || 0)), 0)
+    const ga = myMatches.reduce((acc, m) => acc + (m.participant_a_id === p.id ? (m.score_b || 0) : (m.score_a || 0)), 0)
+    return { ...p, wins, losses, played, pts: wins * 3, gf, ga, gd: gf - ga }
+  }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border text-xs text-muted uppercase tracking-wide">
+            <th className="text-left py-2 px-2 w-6">#</th>
+            <th className="text-left py-2 px-2">Team / Player</th>
+            <th className="text-center py-2 px-2">P</th>
+            <th className="text-center py-2 px-2">W</th>
+            <th className="text-center py-2 px-2">L</th>
+            <th className="text-center py-2 px-2">GD</th>
+            <th className="text-center py-2 px-2 text-accent font-bold">PTS</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {standings.map((p, i) => (
+            <tr key={p.id} className={`hover:bg-surface/50 transition-colors ${i === 0 ? 'text-yellow-400' : i < 3 ? 'text-emerald-400' : 'text-slate-300'}`}>
+              <td className="py-2.5 px-2 font-bold text-xs">{i + 1}</td>
+              <td className="py-2.5 px-2">
+                <div className="flex items-center gap-2">
+                  {p.team?.logo_url
+                    ? <img src={p.team.logo_url} className="w-5 h-5 rounded object-cover" alt="" />
+                    : p.profile?.avatar_url
+                    ? <img src={p.profile.avatar_url} className="w-5 h-5 rounded-full object-cover" alt="" />
+                    : null
+                  }
+                  <span className="font-medium truncate max-w-[140px]">{p.team?.name || p.profile?.username || '?'}</span>
+                </div>
+              </td>
+              <td className="py-2.5 px-2 text-center text-muted">{p.played}</td>
+              <td className="py-2.5 px-2 text-center">{p.wins}</td>
+              <td className="py-2.5 px-2 text-center text-muted">{p.losses}</td>
+              <td className="py-2.5 px-2 text-center text-xs">{p.gd >= 0 ? `+${p.gd}` : p.gd}</td>
+              <td className="py-2.5 px-2 text-center font-bold text-accent">{p.pts}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -201,16 +254,36 @@ export default function TournamentDetail() {
     try {
       const shuffled = [...participants].sort(() => Math.random() - 0.5)
       const newMatches = []
-      for (let i = 0; i < shuffled.length; i += 2) {
-        newMatches.push({
-          tournament_id: id, round: 1,
-          match_number: Math.floor(i / 2) + 1,
-          participant_a_id: shuffled[i].id,
-          participant_b_id: shuffled[i + 1]?.id ?? null,
-          status: shuffled[i + 1] ? 'pending' : 'completed',
-          winner_id: shuffled[i + 1] ? null : shuffled[i].id,
-        })
+
+      if (tournament.format === 'round_robin') {
+        // Generate all vs all matchups
+        let matchNum = 1
+        for (let i = 0; i < shuffled.length; i++) {
+          for (let j = i + 1; j < shuffled.length; j++) {
+            newMatches.push({
+              tournament_id: id, round: 1,
+              match_number: matchNum++,
+              participant_a_id: shuffled[i].id,
+              participant_b_id: shuffled[j].id,
+              status: 'pending',
+              winner_id: null,
+            })
+          }
+        }
+      } else {
+        // Single / double elimination: pair up in round 1
+        for (let i = 0; i < shuffled.length; i += 2) {
+          newMatches.push({
+            tournament_id: id, round: 1,
+            match_number: Math.floor(i / 2) + 1,
+            participant_a_id: shuffled[i].id,
+            participant_b_id: shuffled[i + 1]?.id ?? null,
+            status: shuffled[i + 1] ? 'pending' : 'completed',
+            winner_id: shuffled[i + 1] ? null : shuffled[i].id,
+          })
+        }
       }
+
       await supabase.from('tournament_matches').insert(newMatches)
       await supabase.from('tournaments').update({ status: 'in_progress' }).eq('id', id)
       toast.success('Tournament started! Bracket generated.')
@@ -232,11 +305,65 @@ export default function TournamentDetail() {
         score_a: scoreA, score_b: scoreB,
         winner_id: winnerId, status: 'completed'
       }).eq('id', reportModal.id)
-      toast.success('Result reported!')
+
+      // Auto-advance bracket (single/double elimination only)
+      if (tournament.format !== 'round_robin') {
+        const updatedMatches = matches.map(m =>
+          m.id === reportModal.id ? { ...m, score_a: scoreA, score_b: scoreB, winner_id: winnerId, status: 'completed' } : m
+        )
+        const currentRound = reportModal.round
+        const roundMatches = updatedMatches.filter(m => m.round === currentRound)
+        const allRoundDone = roundMatches.every(m => m.status === 'completed')
+
+        if (allRoundDone) {
+          const winnerIds = roundMatches.map(m => m.winner_id).filter(Boolean)
+          if (winnerIds.length <= 1) {
+            // Tournament champion decided
+            await supabase.from('tournaments').update({ status: 'completed' }).eq('id', id)
+            toast.success('🏆 Tournament complete!')
+          } else {
+            // Generate next round
+            const nextRound = currentRound + 1
+            const nextMatches = []
+            for (let i = 0; i < winnerIds.length; i += 2) {
+              nextMatches.push({
+                tournament_id: id, round: nextRound,
+                match_number: Math.floor(i / 2) + 1,
+                participant_a_id: winnerIds[i],
+                participant_b_id: winnerIds[i + 1] ?? null,
+                status: winnerIds[i + 1] ? 'pending' : 'completed',
+                winner_id: winnerIds[i + 1] ? null : winnerIds[i],
+              })
+            }
+            await supabase.from('tournament_matches').insert(nextMatches)
+            toast.success(`Round ${currentRound} complete! Round ${nextRound} generated.`)
+          }
+        } else {
+          toast.success('Result reported!')
+        }
+      } else {
+        // Round robin: check if all matches done = tournament complete
+        const updatedMatches = matches.map(m =>
+          m.id === reportModal.id ? { ...m, status: 'completed', winner_id: winnerId } : m
+        )
+        const allDone = updatedMatches.every(m => m.status === 'completed')
+        if (allDone) {
+          await supabase.from('tournaments').update({ status: 'completed' }).eq('id', id)
+          toast.success('🏆 Tournament complete! Check final standings.')
+        } else {
+          toast.success('Result reported!')
+        }
+      }
+
       setReportModal(null)
       setReportScores({ a: '', b: '' })
       loadTournament()
     } catch { toast.error('Failed to report result') }
+  }
+
+  const copyInviteLink = () => {
+    navigator.clipboard.writeText(window.location.href)
+    toast.success('Link copied!')
   }
 
   if (loading) return (
@@ -250,6 +377,22 @@ export default function TournamentDetail() {
   const isRegistered = participants.some(p => p.user_id === user?.id)
   const isFull = participants.length >= tournament.max_participants
   const game = tournament.game || GAME_BY_ID[tournament.game_id]
+
+  const champion = (() => {
+    if (tournament.status !== 'completed' || matches.length === 0) return null
+    if (tournament.format === 'round_robin') {
+      const winCounts = {}
+      for (const m of matches) {
+        if (m.winner_id) winCounts[m.winner_id] = (winCounts[m.winner_id] || 0) + 1
+      }
+      const topId = Object.entries(winCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
+      return participants.find(p => p.id === topId) || null
+    }
+    const maxRound = Math.max(...matches.map(m => m.round))
+    const finalMatch = matches.filter(m => m.round === maxRound && m.status === 'completed').at(-1)
+    if (!finalMatch?.winner_id) return null
+    return participants.find(p => p.id === finalMatch.winner_id) || null
+  })()
 
   const STATUS_LABELS = {
     open: t('open'),
@@ -304,6 +447,9 @@ export default function TournamentDetail() {
             </div>
           </div>
           <div className="shrink-0 flex gap-2 flex-wrap justify-end pb-3">
+            <Button size="sm" variant="secondary" onClick={copyInviteLink} title="Copy invite link">
+              <Link2 size={14} />
+            </Button>
             {isOrganizer && tournament.status === 'open' && (
               <Button size="sm" variant="secondary" onClick={() => navigate(`/tournaments/${id}/edit`)}>
                 <Pencil size={14} /> {t('edit_tournament')}
@@ -367,6 +513,31 @@ export default function TournamentDetail() {
           </span>
         </div>
       </div>
+
+      {/* Champion Banner */}
+      {champion && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: 'spring', bounce: 0.3 }}
+          className="mb-6 relative overflow-hidden rounded-xl border border-yellow-400/30 bg-gradient-to-r from-yellow-500/10 via-amber-400/10 to-yellow-500/10 p-5 text-center"
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/5 via-amber-400/5 to-yellow-500/5 animate-pulse" style={{ animationDuration: '3s' }} />
+          <div className="relative">
+            <Trophy size={32} className="mx-auto mb-2 text-yellow-400 drop-shadow" />
+            <p className="text-xs font-semibold text-yellow-400/80 uppercase tracking-widest mb-1">Champion</p>
+            <h2 className="text-2xl font-black text-yellow-300">
+              {champion.team?.name || champion.profile?.username || 'Unknown'}
+            </h2>
+            {champion.team?.tag && <p className="text-sm text-yellow-400/60 mt-0.5">[{champion.team.tag}]</p>}
+            {!champion.team && champion.profile?.username && (
+              <Link to={`/profile/${champion.profile.username}`} className="text-sm text-yellow-400/60 hover:text-yellow-400 transition-colors mt-0.5 block">
+                @{champion.profile.username}
+              </Link>
+            )}
+          </div>
+        </motion.div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 bg-surface border border-border rounded-xl p-1 mb-6">
@@ -449,7 +620,14 @@ export default function TournamentDetail() {
             </div>
           ) : (
             <>
-              <BracketView matches={matches} participants={participants} t={t} />
+              {tournament.format === 'round_robin' ? (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-white">Standings</h3>
+                  <RoundRobinStandings matches={matches} participants={participants} />
+                </div>
+              ) : (
+                <BracketView matches={matches} participants={participants} t={t} />
+              )}
               {isOrganizer && (
                 <div className="mt-4 pt-4 border-t border-border">
                   <h3 className="text-sm font-semibold text-white mb-3">{t('report_results')}</h3>
@@ -463,7 +641,7 @@ export default function TournamentDetail() {
                         <button key={match.id} onClick={() => { setReportModal(match); setReportScores({ a: '', b: '' }) }}
                           className="flex items-center gap-2 p-3 bg-surface border border-border rounded-xl hover:border-accent/40 transition-colors text-left text-sm">
                           <Award size={14} className="text-accent shrink-0" />
-                          <span className="text-slate-300 truncate">R{match.round}: {nameA} vs {nameB}</span>
+                          <span className="text-slate-300 truncate">{tournament.format === 'round_robin' ? 'Match' : `R${match.round}`}: {nameA} vs {nameB}</span>
                         </button>
                       )
                     })}

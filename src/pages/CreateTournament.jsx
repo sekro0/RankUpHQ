@@ -22,7 +22,7 @@ export default function CreateTournament() {
   const [form, setForm] = useState({
     name: '', game_id: '', format: 'single_elimination', participant_type: 'team',
     max_participants: 8, min_team_size: 1, prize_info: '', rules: '', starts_at: '',
-    description: '', image_url: '', banner_url: ''
+    registration_deadline: '', description: '', image_url: '', banner_url: ''
   })
 
   const update = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
@@ -68,6 +68,7 @@ export default function CreateTournament() {
         organizer_id: user.id,
         game_id: form.game_id || null,
         starts_at: form.starts_at || null,
+        registration_deadline: form.registration_deadline || null,
         max_participants: parseInt(form.max_participants),
         min_team_size: form.participant_type === 'team' ? parseInt(form.min_team_size) || 1 : null,
       }
@@ -194,9 +195,15 @@ export default function CreateTournament() {
           </div>
         </div>
 
-        <div>
-          <label className={labelClass}>{t('start_datetime')}</label>
-          <input className={inputClass} type="datetime-local" value={form.starts_at} onChange={e => update('starts_at', e.target.value)} />
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>{t('start_datetime')}</label>
+            <input className={inputClass} type="datetime-local" value={form.starts_at} onChange={e => update('starts_at', e.target.value)} />
+          </div>
+          <div>
+            <label className={labelClass}>Registration Deadline</label>
+            <input className={inputClass} type="datetime-local" value={form.registration_deadline} onChange={e => update('registration_deadline', e.target.value)} />
+          </div>
         </div>
 
         <div>

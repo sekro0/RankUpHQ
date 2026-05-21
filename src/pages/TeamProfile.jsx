@@ -1,8 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Crown, Shield, Star, UserMinus, UserPlus, Search, MessageSquare, Check, X, ChevronDown, Edit2, Settings, Camera } from 'lucide-react'
+import { ArrowLeft, Crown, Shield, Star, UserMinus, UserPlus, Search, MessageSquare, Check, X, ChevronDown, Edit2, Settings, Camera, Link2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
+
+const copyInviteLink = () => {
+  navigator.clipboard.writeText(window.location.href)
+  toast.success('Link copied!')
+}
 import supabase from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 import { GAME_BY_ID } from '../utils/constants'
@@ -24,6 +29,7 @@ export default function TeamProfile() {
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [myMembership, setMyMembership] = useState(null)
+  const [wl, setWl] = useState(null)
 
   // Join request (non-member)
   const [joinModal, setJoinModal] = useState(false)
@@ -102,6 +108,27 @@ export default function TeamProfile() {
         .eq('status', 'pending')
         .order('created_at', { ascending: true })
       setJoinRequests(reqs || [])
+    }
+
+    // Load W/L stats from tournament matches
+    const { data: participants } = await supabase
+      .from('tournament_participants')
+      .select('id')
+      .eq('team_id', id)
+    if (participants && participants.length > 0) {
+      const pIds = participants.map(p => p.id)
+      const { data: matches } = await supabase
+        .from('tournament_matches')
+        .select('participant_a_id, participant_b_id, winner_id')
+        .or(`participant_a_id.in.(${pIds.join(',')}),participant_b_id.in.(${pIds.join(',')})`)
+        .not('winner_id', 'is', null)
+      if (matches) {
+        const pSet = new Set(pIds)
+        const wins = matches.filter(m => pSet.has(m.winner_id)).length
+        setWl({ wins, losses: matches.length - wins, played: matches.length })
+      }
+    } else {
+      setWl({ wins: 0, losses: 0, played: 0 })
     }
 
     setLoading(false)
@@ -403,6 +430,10 @@ export default function TeamProfile() {
               </div>
             </div>
             <div className="flex gap-2 flex-wrap justify-end">
+              <button onClick={copyInviteLink} title="Copy invite link"
+                className="p-2 text-muted hover:text-white hover:bg-surface/60 rounded-lg transition-colors border border-border/50">
+                <Link2 size={14} />
+              </button>
               {isMember && (
                 <Button variant="secondary" size="sm" onClick={openTeamChat}>
                   <MessageSquare size={14} /> Team Chat
@@ -434,9 +465,29 @@ export default function TeamProfile() {
             </div>
           </div>
         </div>
-        {team.description && (
-          <div className="px-4 py-3 border-t border-border">
-            <p className="text-sm text-slate-300">{team.description}</p>
+        {(team.description || wl) && (
+          <div className="px-4 py-3 border-t border-border flex flex-col gap-2">
+            {team.description && <p className="text-sm text-slate-300">{team.description}</p>}
+            {wl && wl.played > 0 && (
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted">W/L</span>
+                  <span className="text-sm font-bold text-emerald-400">{wl.wins}</span>
+                  <span className="text-xs text-muted">/</span>
+                  <span className="text-sm font-bold text-red-400">{wl.losses}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted">Matches</span>
+                  <span className="text-sm font-semibold text-white">{wl.played}</span>
+                </div>
+                {wl.played > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-muted">Win rate</span>
+                    <span className="text-sm font-semibold text-accent">{Math.round((wl.wins / wl.played) * 100)}%</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

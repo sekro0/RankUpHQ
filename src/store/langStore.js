@@ -96,6 +96,8 @@ const T = {
     min_chars: 'Min. 6 characters',
     log_in_to_account: 'Log in to your GameMatch account',
     join_community: 'Join the GameMatch community',
+    settings: 'Settings', language: 'Language', change_password: 'Change Password', new_password: 'New Password',
+    search: 'Search', leaderboard: 'Leaderboard',
   },
   es: {
     // Nav
@@ -191,6 +193,8 @@ const T = {
     min_chars: 'Mín. 6 caracteres',
     log_in_to_account: 'Iniciá sesión en tu cuenta',
     join_community: 'Unite a la comunidad',
+    settings: 'Configuración', language: 'Idioma', change_password: 'Cambiar Contraseña', new_password: 'Nueva Contraseña',
+    search: 'Buscar', leaderboard: 'Clasificación',
   },
   pt: {
     // Nav
@@ -286,6 +290,8 @@ const T = {
     min_chars: 'Mín. 6 caracteres',
     log_in_to_account: 'Entre na sua conta',
     join_community: 'Entre na comunidade',
+    settings: 'Configurações', language: 'Idioma', change_password: 'Alterar Senha', new_password: 'Nova Senha',
+    search: 'Buscar', leaderboard: 'Classificação',
   },
 }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Users, MessageSquare, LogIn, LogOut, Filter, X } from 'lucide-react'
+import { ArrowLeft, Users, MessageSquare, LogIn, LogOut, Filter, X, Clock } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import supabase from '../lib/supabase'
@@ -16,12 +16,14 @@ import { timeAgo } from '../utils/formatters'
 function QueueEntryCard({ entry, onMessage, isOwn }) {
   const profile = entry.profile
   const rankColor = RANK_COLORS[entry.rank] || '#7c3aed'
+  const ageHours = (Date.now() - new Date(entry.created_at).getTime()) / 3600000
+  const isStale = ageHours >= 2
 
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 10 }}
-      className={`flex items-center gap-3 p-4 bg-surface border rounded-xl transition-colors ${isOwn ? 'border-accent/50 bg-accent/5' : 'border-border hover:border-border/80'}`}
+      className={`flex items-center gap-3 p-4 bg-surface border rounded-xl transition-colors ${isOwn ? 'border-accent/50 bg-accent/5' : isStale ? 'border-orange-500/20' : 'border-border hover:border-border/80'}`}
     >
       <Avatar src={profile?.avatar_url} name={profile?.username} size="md" />
       <div className="flex-1 min-w-0">
@@ -35,6 +37,11 @@ function QueueEntryCard({ entry, onMessage, isOwn }) {
             </span>
           )}
           {entry.role && <Badge>{entry.role}</Badge>}
+          {isStale && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400 border border-orange-500/20">
+              {ageHours < 24 ? `${Math.floor(ageHours)}h ago` : `${Math.floor(ageHours/24)}d ago`} · may be inactive
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3 mt-1 flex-wrap">
           {entry.looking_for && (
@@ -187,6 +194,13 @@ export default function GameQueue() {
 
   const hasFilters = Object.values(filters).some(Boolean)
 
+  const avgWaitMin = (() => {
+    if (filteredEntries.length === 0) return null
+    const now = Date.now()
+    const total = filteredEntries.reduce((acc, e) => acc + (now - new Date(e.created_at).getTime()), 0)
+    return Math.round(total / filteredEntries.length / 60000)
+  })()
+
   if (!game) return null
 
   const selectClass = "px-3 py-2 bg-surface border border-border rounded-lg text-slate-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
@@ -203,7 +217,12 @@ export default function GameQueue() {
             <h1 className="text-2xl font-black text-white">{game.name}</h1>
             <span className="text-xs text-muted bg-surface border border-border px-2 py-0.5 rounded-full">{game.genre}</span>
           </div>
-          <p className="text-sm text-muted">{filteredEntries.length} player{filteredEntries.length !== 1 ? 's' : ''} in queue</p>
+          <p className="text-sm text-muted">
+            {filteredEntries.length} player{filteredEntries.length !== 1 ? 's' : ''} in queue
+            {avgWaitMin !== null && (
+              <span className="ml-2 inline-flex items-center gap-1 text-muted"><Clock size={11} /> ~{avgWaitMin}m avg wait</span>
+            )}
+          </p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setShowFilters(!showFilters)}
